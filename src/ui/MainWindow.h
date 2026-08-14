@@ -8,6 +8,7 @@
 #include <QHash>
 #include <QJsonObject>
 #include <QMainWindow>
+#include <QTimer>
 
 class QButtonGroup;
 class QCheckBox;
@@ -26,7 +27,6 @@ class QScrollArea;
 class QSpinBox;
 class QStackedWidget;
 class QSystemTrayIcon;
-class QTimer;
 class QVBoxLayout;
 class QJsonArray;
 class QJsonValue;
@@ -40,6 +40,21 @@ class MainWindow final : public QMainWindow {
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
+
+    void requestGameLaunch(qint64 gameId)
+    {
+        if (gameId > 0)
+            m_commandLaunchId = gameId;
+        if (m_commandLaunchId <= 0)
+            return;
+        if (!m_user.isEmpty() && m_client.isConnected()) {
+            const qint64 pending = m_commandLaunchId;
+            m_commandLaunchId = 0;
+            checkAndLaunch(pending);
+            return;
+        }
+        QTimer::singleShot(400, this, [this] { requestGameLaunch(0); });
+    }
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -114,6 +129,7 @@ private:
     QJsonObject m_currentGame;
     qint64 m_currentGameId = 0;
     qint64 m_pendingUpdateCheck = 0;
+    qint64 m_commandLaunchId = 0;
     QHash<qint64, QFrame *> m_downloadRows;
 
     QStackedWidget *m_pages = nullptr;
