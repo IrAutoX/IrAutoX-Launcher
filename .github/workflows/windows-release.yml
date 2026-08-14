@@ -45,8 +45,8 @@ jobs:
           if ($changes) {
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add resources/app.ico resources/Vazir.ttf third_party/vazirmatn/OFL.txt third_party/vazirmatn/AUTHORS.txt resources/resources.qrc
-            git commit -m "Generate Windows icon and preview assets [skip ci]"
+            git add resources/app.ico resources/Vazir.ttf third_party/vazirmatn/OFL.txt third_party/vazirmatn/AUTHORS.txt resources/resources.qrc resources/theme.qss src/ui/MainWindow.cpp src/ui/MainWindow.h
+            git commit -m "Generate Windows icon and launcher UI fixes [skip ci]"
             git push origin HEAD:agent/steam-ui-updater-launch-routing
           }
 
