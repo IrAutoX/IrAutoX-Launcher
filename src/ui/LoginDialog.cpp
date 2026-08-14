@@ -6,10 +6,92 @@
 #include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QVBoxLayout>
 
 namespace irautox {
+namespace {
+
+class LoginTitleBar final : public QFrame {
+public:
+    explicit LoginTitleBar(QDialog *dialog)
+        : QFrame(dialog), m_dialog(dialog)
+    {
+        setObjectName(QStringLiteral("windowTitleBar"));
+        setFixedHeight(44);
+        setLayoutDirection(Qt::LeftToRight);
+
+        auto *layout = new QHBoxLayout(this);
+        layout->setContentsMargins(14, 0, 0, 0);
+        layout->setSpacing(7);
+
+        auto *logo = new QLabel(this);
+        logo->setPixmap(QIcon(QStringLiteral(":/logo.svg")).pixmap(25, 25));
+        auto *brand = new QLabel(QStringLiteral("IrAutoX"), this);
+        brand->setObjectName(QStringLiteral("windowBrand"));
+        auto *subtitle = new QLabel(QObject::tr("Account"), this);
+        subtitle->setObjectName(QStringLiteral("windowSubtitle"));
+        layout->addWidget(logo);
+        layout->addWidget(brand);
+        layout->addWidget(subtitle);
+        layout->addStretch();
+
+        auto *minimize = windowButton(QStringLiteral("windowMinimize"), QStringLiteral(":/icons/minimize.svg"));
+        auto *close = windowButton(QStringLiteral("windowClose"), QStringLiteral(":/icons/close.svg"));
+        connect(minimize, &QPushButton::clicked, dialog, &QWidget::showMinimized);
+        connect(close, &QPushButton::clicked, dialog, &QWidget::close);
+        layout->addWidget(minimize);
+        layout->addWidget(close);
+    }
+
+protected:
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        if (event->button() == Qt::LeftButton) {
+            m_dragging = true;
+            m_dragOffset = event->globalPosition().toPoint() - m_dialog->frameGeometry().topLeft();
+            event->accept();
+            return;
+        }
+        QFrame::mousePressEvent(event);
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        if (m_dragging && (event->buttons() & Qt::LeftButton)) {
+            m_dialog->move(event->globalPosition().toPoint() - m_dragOffset);
+            event->accept();
+            return;
+        }
+        QFrame::mouseMoveEvent(event);
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        m_dragging = false;
+        QFrame::mouseReleaseEvent(event);
+    }
+
+private:
+    QPushButton *windowButton(const QString &name, const QString &iconPath)
+    {
+        auto *button = new QPushButton(this);
+        button->setObjectName(name);
+        button->setFixedSize(46, 44);
+        button->setFlat(true);
+        button->setIcon(QIcon(iconPath));
+        button->setIconSize(QSize(16, 16));
+        button->setFocusPolicy(Qt::NoFocus);
+        return button;
+    }
+
+    QDialog *m_dialog = nullptr;
+    bool m_dragging = false;
+    QPoint m_dragOffset;
+};
+
+} // namespace
 
 LoginDialog::LoginDialog(QWidget *parent)
     : QDialog(parent)
@@ -17,17 +99,24 @@ LoginDialog::LoginDialog(QWidget *parent)
     setObjectName(QStringLiteral("loginRoot"));
     setWindowTitle(tr("ورود به IrAutoX"));
     setWindowIcon(QIcon(QStringLiteral(":/logo.svg")));
+    setWindowFlag(Qt::FramelessWindowHint, true);
     setModal(false);
-    setMinimumSize(900, 560);
-    resize(980, 620);
+    setMinimumSize(900, 604);
+    resize(980, 664);
 
-    auto *root = new QHBoxLayout(this);
+    auto *outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 0);
+    outer->setSpacing(0);
+    outer->addWidget(new LoginTitleBar(this));
+
+    auto *content = new QWidget(this);
+    auto *root = new QHBoxLayout(content);
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(0);
 
-    auto *visual = new QFrame(this);
+    auto *visual = new QFrame(content);
     visual->setStyleSheet(QStringLiteral(
-        "QFrame { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #131a25,stop:0.55 #181820,stop:1 #3a1c0f); }"));
+        "QFrame { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #101b2a,stop:0.55 #142438,stop:1 #0d141e); }"));
     auto *visualLayout = new QVBoxLayout(visual);
     visualLayout->setContentsMargins(52, 48, 52, 48);
     auto *logo = new QLabel(visual);
@@ -39,7 +128,7 @@ LoginDialog::LoginDialog(QWidget *parent)
     headline->setStyleSheet(QStringLiteral("font-size: 28pt; font-weight: 800; color: white;"));
     auto *copy = new QLabel(tr("فروشگاه، کتابخانه، دانلود و دوستان؛\nدر یک لانچر سریع و بومی."), visual);
     copy->setObjectName(QStringLiteral("muted"));
-    copy->setStyleSheet(QStringLiteral("font-size: 12pt; color: #b9c0cd;"));
+    copy->setStyleSheet(QStringLiteral("font-size: 12pt; color: #9eb0c3;"));
     visualLayout->addWidget(logo, 0, Qt::AlignLeft);
     visualLayout->addSpacing(24);
     visualLayout->addWidget(brand);
@@ -49,7 +138,7 @@ LoginDialog::LoginDialog(QWidget *parent)
     visualLayout->addWidget(copy);
     visualLayout->addStretch();
 
-    auto *formHost = new QFrame(this);
+    auto *formHost = new QFrame(content);
     auto *form = new QVBoxLayout(formHost);
     form->setContentsMargins(64, 54, 64, 54);
     auto *title = new QLabel(tr("خوش آمدید"), formHost);
@@ -88,6 +177,7 @@ LoginDialog::LoginDialog(QWidget *parent)
 
     root->addWidget(visual, 11);
     root->addWidget(formHost, 9);
+    outer->addWidget(content, 1);
 
     connect(m_login, &QPushButton::clicked, this, [this] { submit(false); });
     connect(m_register, &QPushButton::clicked, this, [this] { submit(true); });
@@ -147,4 +237,3 @@ void LoginDialog::submit(bool registration)
 }
 
 } // namespace irautox
-
