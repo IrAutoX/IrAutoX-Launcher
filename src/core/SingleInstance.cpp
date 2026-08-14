@@ -3,6 +3,8 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 
+#include <utility>
+
 namespace irautox {
 
 SingleInstance::SingleInstance(QString name, QObject *parent)
