@@ -1,5 +1,4 @@
 #include "ui/MainWindow.h"
-#include "../resources/VazirEmbedded.h"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -22,15 +21,14 @@ int main(int argc, char *argv[])
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/logo.svg")));
     QApplication::setLayoutDirection(Qt::RightToLeft);
 
-    const QByteArray vazirData = QByteArray::fromBase64(QByteArrayLiteral(IRAUTOX_VAZIR_BASE64));
-    const int fontId = vazirData.isEmpty() ? -1 : QFontDatabase::addApplicationFontFromData(vazirData);
+    // IRAUTOX_PATCH_V2: the actual Vazirmatn Regular TTF is vendored as resources/Vazir.ttf.
+    const int fontId = QFontDatabase::addApplicationFont(QStringLiteral(":/Vazir.ttf"));
     if (fontId >= 0) {
         const QStringList families = QFontDatabase::applicationFontFamilies(fontId);
-        if (!families.isEmpty())
-            app.setFont(QFont(families.first(), 10));
-    }
-    if (fontId < 0)
+        app.setFont(QFont(families.isEmpty() ? QStringLiteral("Vazirmatn") : families.first(), 10));
+    } else {
         app.setFont(QFont(QStringLiteral("Tahoma"), 10));
+    }
 
     QFile style(QStringLiteral(":/theme.qss"));
     if (style.open(QIODevice::ReadOnly))

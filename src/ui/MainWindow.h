@@ -23,6 +23,7 @@ class QListWidget;
 class QMouseEvent;
 class QPlainTextEdit;
 class QProgressBar;
+class QProcess;
 class QPushButton;
 class QScrollArea;
 class QSpinBox;
@@ -126,6 +127,7 @@ private:
     qint64 m_currentGameId = 0;
     qint64 m_pendingUpdateCheck = 0;
     QHash<qint64, QFrame *> m_downloadRows;
+    QHash<qint64, QProcess *> m_activeGameProcesses;
 
     QStackedWidget *m_pages = nullptr;
     QButtonGroup *m_navigation = nullptr;

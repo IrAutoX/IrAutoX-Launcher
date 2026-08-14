@@ -166,3 +166,52 @@ QMenu { background: #1d232b; border: 1px solid #343d48; padding: 6px; }
 QMenu::item { padding: 8px 18px; border-radius: 4px; }
 QMenu::item:selected { background: #294158; color: #ffffff; }
 QMessageBox { background: #1b2028; }
+
+
+/* IRAUTOX_PATCH_V2_DOWNLOADS */
+QWidget#downloadsPage { background: #171a21; }
+QFrame#downloadToolbar {
+  background: #1b2028;
+  border: 1px solid #292f39;
+  border-radius: 9px;
+}
+QPushButton#downloadControl, QPushButton#downloadCancel {
+  min-height: 30px;
+  max-height: 30px;
+  padding: 0 13px;
+  border-radius: 6px;
+  background: #242b34;
+  border: 1px solid #313944;
+  color: #d7dce3;
+  font-weight: 600;
+}
+QPushButton#downloadControl:hover { background: #2c3540; color: #ffffff; }
+QPushButton#downloadCancel { background: transparent; color: #d78383; border-color: #4b3033; }
+QPushButton#downloadCancel:hover { background: #3a2226; color: #ffb0b0; }
+QFrame#downloadItem {
+  background: #1b2028;
+  border: 1px solid #292f39;
+  border-radius: 9px;
+}
+QLabel#downloadGameIcon {
+  background: #11151b;
+  border: 1px solid #2a313b;
+  border-radius: 7px;
+}
+QLabel#downloadName { color: #f3f5f7; font-size: 11pt; font-weight: 700; }
+QLabel#downloadState { color: #66c0f4; font-size: 9.5pt; font-weight: 700; }
+QLabel#downloadMeta, QLabel#downloadEmpty { color: #7f8a99; font-size: 9.5pt; }
+QLabel#downloadEmpty { padding: 42px; }
+QWidget#downloadsPage QProgressBar {
+  min-height: 5px;
+  max-height: 5px;
+  background: #2a3038;
+  border-radius: 2px;
+}
+QWidget#downloadsPage QProgressBar::chunk { background: #66c0f4; border-radius: 2px; }
+QLabel#storeImage {
+  background: #11151b;
+  border: 1px solid #242b34;
+  border-radius: 8px;
+  padding: 8px;
+}
