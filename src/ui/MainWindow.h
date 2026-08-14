@@ -21,6 +21,7 @@ class QLabel;
 class QLineEdit;
 class QListWidget;
 class QMouseEvent;
+class QNetworkAccessManager;
 class QPlainTextEdit;
 class QProgressBar;
 class QProcess;
@@ -106,6 +107,7 @@ private:
     void writeInstallMarker(const DownloadRequest &request) const;
     bool hasValidInstallMarker(const InstalledGame &game) const;
     bool gameSessionActive() const;
+    void applyGameIcon(QLabel *label, const QJsonObject &game, const QSize &size, bool circular = false);
 
     static qint64 jsonId(const QJsonValue &value);
     static QString safeFolderName(const QString &name, qint64 id);
@@ -142,6 +144,7 @@ private:
     QPushButton *m_adminNavButton = nullptr;
     QSystemTrayIcon *m_tray = nullptr;
     QTimer *m_announcementTimer = nullptr;
+    QNetworkAccessManager *m_assetNetwork = nullptr;
 
     QGridLayout *m_storeGrid = nullptr;
     QVBoxLayout *m_libraryLayout = nullptr;

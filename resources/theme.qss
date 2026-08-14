@@ -215,3 +215,9 @@ QLabel#storeImage {
   border-radius: 8px;
   padding: 8px;
 }
+
+/* IRAUTOX_V3_COMPACT */
+QFrame#downloadItem { min-width:220px; max-width:320px; min-height:92px; max-height:116px; }
+QLabel#downloadGameIcon { min-width:38px; max-width:38px; min-height:38px; max-height:38px; }
+QWidget#downloadsPage QScrollArea > QWidget > QWidget { background:#171a21; }
+QLabel#downloadName { font-size:10pt; }

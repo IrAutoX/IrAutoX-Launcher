@@ -34,6 +34,12 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
+#include <QPointer>
+#include <QPainterPath>
+#include <QPainter>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QNetworkAccessManager>
 #include <QPlainTextEdit>
 #include <QProcess>
 #include <QProgressBar>
@@ -72,14 +78,33 @@ void clearLayout(QLayout *layout)
     }
 }
 
-QPixmap decodedPixmap(const QString &base64, const QSize &size, bool crop = false)
+QPixmap decodedPixmap(const QString &value, const QSize &size, bool crop = false)
 {
+    QString payload = value.trimmed();
+    if (payload.startsWith(QStringLiteral("data:image"), Qt::CaseInsensitive)) {
+        const qsizetype comma = payload.indexOf(QLatin1Char(','));
+        if (comma >= 0) payload = payload.mid(comma + 1);
+    }
     QPixmap pixmap;
-    pixmap.loadFromData(QByteArray::fromBase64(base64.toLatin1()));
-    if (pixmap.isNull())
-        return {};
-    return pixmap.scaled(size, crop ? Qt::KeepAspectRatioByExpanding : Qt::KeepAspectRatio,
-                         Qt::SmoothTransformation);
+    pixmap.loadFromData(QByteArray::fromBase64(payload.toLatin1()));
+    if (pixmap.isNull()) return {};
+    return pixmap.scaled(size, crop ? Qt::KeepAspectRatioByExpanding : Qt::KeepAspectRatio, Qt::SmoothTransformation);
+}
+
+QPixmap circularPixmap(const QPixmap &source, const QSize &size)
+{
+    if (source.isNull()) return {};
+    const QPixmap scaled = source.scaled(size, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    QPixmap result(size);
+    result.fill(Qt::transparent);
+    QPainter painter(&result);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    QPainterPath path;
+    path.addEllipse(QRectF(QPointF(0, 0), QSizeF(size)));
+    painter.setClipPath(path);
+    const QPoint offset((size.width() - scaled.width()) / 2, (size.height() - scaled.height()) / 2);
+    painter.drawPixmap(offset, scaled);
+    return result;
 }
 
 QString humanBytes(qint64 bytes)
@@ -136,10 +161,11 @@ MainWindow::MainWindow(QWidget *parent)
 {
     setWindowTitle(QStringLiteral("IrAutoX Launcher"));
     setWindowIcon(QIcon(QStringLiteral(":/logo.svg")));
-    setMinimumSize(1060, 680);
-    resize(1280, 800);
+    setMinimumSize(820, 560);
+    resize(1180, 760);
     setupUi();
     setupTray();
+    m_assetNetwork = new QNetworkAccessManager(this);
 
     QString libraryError;
     if (!m_library.load(&libraryError) && !libraryError.isEmpty())
@@ -174,6 +200,72 @@ MainWindow::~MainWindow() = default;
 void MainWindow::setStartupGameId(qint64 gameId)
 {
     m_startupGameId = gameId;
+}
+
+void MainWindow::handleProtocolUrl(const QString &rawUrl)
+{
+    QUrl url(rawUrl);
+    if (!url.isValid() || url.scheme().compare(QStringLiteral("irautox"), Qt::CaseInsensitive) != 0) return;
+    QString action = url.host().toLower();
+    QString token = url.path().mid(1);
+    if (token.isEmpty()) { token = action; action = QStringLiteral("launch"); }
+    if (action != QStringLiteral("download") && action != QStringLiteral("launch") && action != QStringLiteral("game")) {
+        token = url.host(); action = QStringLiteral("launch");
+    }
+    bool ok = false;
+    qint64 id = token.toLongLong(&ok);
+    if (!ok) {
+        for (auto it = m_games.constBegin(); it != m_games.constEnd(); ++it) {
+            if (it.value().value(QStringLiteral("name")).toString().compare(token, Qt::CaseInsensitive) == 0) { id = it.key(); ok = true; break; }
+        }
+    }
+    if (!ok || id <= 0) {
+        m_startupGameName = action + QLatin1Char('|') + token;
+        return;
+    }
+    if (action == QStringLiteral("download")) showGameDetails(id);
+    else checkAndLaunch(id);
+}
+
+bool MainWindow::gameSessionActive() const
+{
+    for (QProcess *process : m_activeGameProcesses) {
+        if (process && process->state() != QProcess::NotRunning) return true;
+    }
+    return false;
+}
+
+void MainWindow::applyGameIcon(QLabel *label, const QJsonObject &game, const QSize &size, bool circular)
+{
+    if (!label) return;
+    QString value = game.value(QStringLiteral("icon")).toString();
+    if (value.isEmpty()) value = game.value(QStringLiteral("icon_url")).toString();
+    if (value.isEmpty()) value = game.value(QStringLiteral("logo")).toString();
+    auto apply = [label, size, circular](const QPixmap &source) {
+        if (source.isNull()) return;
+        label->setPixmap(circular ? circularPixmap(source, size) : source.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    };
+    if (value.startsWith(QStringLiteral("http://"), Qt::CaseInsensitive) || value.startsWith(QStringLiteral("https://"), Qt::CaseInsensitive)) {
+        label->setPixmap(QIcon(QStringLiteral(":/logo.svg")).pixmap(size));
+        QNetworkRequest request(QUrl(value));
+        request.setTransferTimeout(7000);
+        request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+        QNetworkReply *reply = m_assetNetwork->get(request);
+        QPointer<QLabel> safeLabel(label);
+        connect(reply, &QNetworkReply::finished, this, [reply, safeLabel, size, circular] {
+            const QByteArray bytes = reply->readAll();
+            const bool ok = reply->error() == QNetworkReply::NoError;
+            reply->deleteLater();
+            if (!ok || !safeLabel) return;
+            QPixmap pix; pix.loadFromData(bytes);
+            if (pix.isNull()) return;
+            safeLabel->setPixmap(circular ? circularPixmap(pix, size) : pix.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        });
+        return;
+    }
+    QPixmap pix = decodedPixmap(value, size, true);
+    if (pix.isNull()) pix = QIcon(QStringLiteral(":/logo.svg")).pixmap(size);
+    apply(pix);
 }
 
 QFrame *MainWindow::createWindowBar(QWidget *parent)
@@ -262,7 +354,7 @@ void MainWindow::setupUi()
     side->addWidget(m_adminNavButton);
     side->addStretch();
 
-    auto *version = new QLabel(tr("Native C++  •  v%1").arg(QString::fromLatin1(IRAUTOX_VERSION)), sidebar);
+    auto *version = new QLabel(tr("IrAutoX  •  v%1").arg(QString::fromLatin1(IRAUTOX_VERSION)), sidebar);
     version->setObjectName(QStringLiteral("muted"));
     side->addWidget(version);
 
@@ -415,44 +507,35 @@ QWidget *MainWindow::createDownloadsPage()
     auto *page = new QWidget(this);
     page->setObjectName(QStringLiteral("downloadsPage"));
     auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(32, 26, 32, 22);
-    layout->setSpacing(14);
-
-    auto *title = titleLabel(tr("دانلودها"), page);
-    auto *subtitle = new QLabel(tr("نصب و بروزرسانی بازی‌ها"), page);
+    layout->setContentsMargins(24, 20, 24, 18);
+    layout->setSpacing(10);
+    layout->addWidget(titleLabel(tr("دانلودها"), page));
+    auto *subtitle = new QLabel(tr("صف دانلود و بروزرسانی بازی‌ها"), page);
     subtitle->setObjectName(QStringLiteral("muted"));
-    layout->addWidget(title);
     layout->addWidget(subtitle);
 
     auto *toolbar = new QFrame(page);
     toolbar->setObjectName(QStringLiteral("downloadToolbar"));
     auto *controls = new QHBoxLayout(toolbar);
-    controls->setContentsMargins(10, 8, 10, 8);
-    controls->setSpacing(8);
+    controls->setContentsMargins(8, 6, 8, 6);
     auto *pause = new QPushButton(tr("توقف"), toolbar);
     auto *resume = new QPushButton(tr("ادامه"), toolbar);
     auto *cancel = new QPushButton(tr("لغو"), toolbar);
-    pause->setObjectName(QStringLiteral("downloadControl"));
-    resume->setObjectName(QStringLiteral("downloadControl"));
-    cancel->setObjectName(QStringLiteral("downloadCancel"));
+    pause->setObjectName(QStringLiteral("downloadControl")); resume->setObjectName(QStringLiteral("downloadControl")); cancel->setObjectName(QStringLiteral("downloadCancel"));
     connect(pause, &QPushButton::clicked, &m_downloadManager, &DownloadManager::pauseCurrent);
     connect(resume, &QPushButton::clicked, &m_downloadManager, &DownloadManager::resumeCurrent);
     connect(cancel, &QPushButton::clicked, &m_downloadManager, &DownloadManager::cancelCurrent);
-    controls->addStretch();
-    controls->addWidget(pause);
-    controls->addWidget(resume);
-    controls->addWidget(cancel);
+    controls->addStretch(); controls->addWidget(pause); controls->addWidget(resume); controls->addWidget(cancel);
     layout->addWidget(toolbar);
 
     auto *container = new QWidget(page);
-    m_downloadsLayout = new QVBoxLayout(container);
-    m_downloadsLayout->setContentsMargins(0, 4, 0, 0);
-    m_downloadsLayout->setSpacing(8);
+    m_downloadsGrid = new QGridLayout(container);
+    m_downloadsGrid->setContentsMargins(0, 4, 0, 0);
+    m_downloadsGrid->setHorizontalSpacing(10);
+    m_downloadsGrid->setVerticalSpacing(10);
     auto *empty = new QLabel(tr("دانلود فعالی وجود ندارد."), container);
-    empty->setObjectName(QStringLiteral("downloadEmpty"));
-    empty->setAlignment(Qt::AlignCenter);
-    m_downloadsLayout->addWidget(empty);
-    m_downloadsLayout->addStretch();
+    empty->setObjectName(QStringLiteral("downloadEmpty")); empty->setAlignment(Qt::AlignCenter);
+    m_downloadsGrid->addWidget(empty, 0, 0, 1, 3);
     layout->addWidget(scrollAreaFor(container, page), 1);
     return page;
 }
@@ -555,49 +638,19 @@ QWidget *MainWindow::createSettingsPage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(28, 24, 28, 18);
     layout->addWidget(titleLabel(tr("تنظیمات"), page));
-    auto *panel = new QFrame(page);
-    panel->setObjectName(QStringLiteral("panel"));
-    auto *form = new QGridLayout(panel);
-    form->setContentsMargins(24, 22, 24, 22);
-    form->setHorizontalSpacing(14);
-    form->setVerticalSpacing(14);
-
+    auto *panel = new QFrame(page); panel->setObjectName(QStringLiteral("panel"));
+    auto *form = new QGridLayout(panel); form->setContentsMargins(24, 22, 24, 22); form->setHorizontalSpacing(14); form->setVerticalSpacing(14);
     m_downloadPath = new QLineEdit(m_settings.downloadRoot(), panel);
     auto *browse = new QPushButton(tr("انتخاب پوشه"), panel);
-    connect(browse, &QPushButton::clicked, this, [this] {
-        const QString path = QFileDialog::getExistingDirectory(this, tr("پوشهٔ نصب بازی‌ها"), m_downloadPath->text());
-        if (!path.isEmpty())
-            m_downloadPath->setText(path);
-    });
-    m_serverHost = new QLineEdit(m_settings.serverHost(), panel);
-    m_serverPort = new QSpinBox(panel);
-    m_serverPort->setRange(1, 65535);
-    m_serverPort->setValue(m_settings.serverPort());
-    m_minimizeToTray = new QCheckBox(tr("با کوچک‌کردن پنجره به Tray برود"), panel);
-    m_minimizeToTray->setChecked(m_settings.minimizeToTray());
-    m_closeToTray = new QCheckBox(tr("با بستن پنجره در پس‌زمینه بماند"), panel);
-    m_closeToTray->setChecked(m_settings.closeToTray());
-    m_startWithWindows = new QCheckBox(tr("همراه ویندوز اجرا شود"), panel);
-    m_startWithWindows->setChecked(m_settings.launchOnStartup());
-    auto *save = new QPushButton(tr("ذخیرهٔ تنظیمات"), panel);
-    save->setObjectName(QStringLiteral("primary"));
-    connect(save, &QPushButton::clicked, this, &MainWindow::saveSettings);
-
-    form->addWidget(new QLabel(tr("مسیر نصب پیش‌فرض"), panel), 0, 0);
-    form->addWidget(m_downloadPath, 0, 1);
-    form->addWidget(browse, 0, 2);
-    form->addWidget(new QLabel(tr("آدرس سرور"), panel), 1, 0);
-    form->addWidget(m_serverHost, 1, 1);
-    form->addWidget(m_serverPort, 1, 2);
-    form->addWidget(m_minimizeToTray, 2, 1, 1, 2);
-    form->addWidget(m_closeToTray, 3, 1, 1, 2);
-    form->addWidget(m_startWithWindows, 4, 1, 1, 2);
-    form->addWidget(save, 5, 1, 1, 2);
+    connect(browse, &QPushButton::clicked, this, [this] { const QString path = QFileDialog::getExistingDirectory(this, tr("پوشهٔ نصب بازی‌ها"), m_downloadPath->text()); if (!path.isEmpty()) m_downloadPath->setText(path); });
+    m_minimizeToTray = new QCheckBox(tr("با کوچک‌کردن پنجره به Tray برود"), panel); m_minimizeToTray->setChecked(m_settings.minimizeToTray());
+    m_closeToTray = new QCheckBox(tr("با بستن پنجره در پس‌زمینه بماند"), panel); m_closeToTray->setChecked(m_settings.closeToTray());
+    m_startWithWindows = new QCheckBox(tr("همراه ویندوز اجرا شود"), panel); m_startWithWindows->setChecked(m_settings.launchOnStartup());
+    auto *save = new QPushButton(tr("ذخیرهٔ تنظیمات"), panel); save->setObjectName(QStringLiteral("primary")); connect(save, &QPushButton::clicked, this, &MainWindow::saveSettings);
+    form->addWidget(new QLabel(tr("مسیر نصب پیش‌فرض"), panel), 0, 0); form->addWidget(m_downloadPath, 0, 1); form->addWidget(browse, 0, 2);
+    form->addWidget(m_minimizeToTray, 1, 1, 1, 2); form->addWidget(m_closeToTray, 2, 1, 1, 2); form->addWidget(m_startWithWindows, 3, 1, 1, 2); form->addWidget(save, 4, 1, 1, 2);
     layout->addWidget(panel);
-    auto *note = new QLabel(tr("رمز ذخیره‌شده با حساب ویندوز شما و DPAPI رمزگذاری می‌شود."), page);
-    note->setObjectName(QStringLiteral("muted"));
-    layout->addWidget(note);
-    layout->addStretch();
+    auto *note = new QLabel(tr("سرور IrAutoX ثابت است. اطلاعات ورود ذخیره‌شده با Windows DPAPI محافظت می‌شود."), page); note->setObjectName(QStringLiteral("muted")); layout->addWidget(note); layout->addStretch();
     return page;
 }
 
@@ -878,7 +931,7 @@ void MainWindow::onServerMessage(const QJsonObject &message)
         const QString avatar = m_user.value(QStringLiteral("avatar")).toString();
         const QPixmap avatarPixmap = decodedPixmap(avatar, QSize(104, 104), true);
         if (!avatarPixmap.isNull())
-            m_profileAvatar->setPixmap(avatarPixmap);
+            m_profileAvatar->setPixmap(circularPixmap(avatarPixmap, QSize(104, 104)));
         show();
         raise();
         requestInitialData();
@@ -899,6 +952,7 @@ void MainWindow::onServerMessage(const QJsonObject &message)
                 m_games.insert(id, game);
         }
         renderStore();
+        if (!m_startupGameName.isEmpty()) { const QString pending = m_startupGameName; m_startupGameName.clear(); QTimer::singleShot(0, this, [this, pending] { handleProtocolUrl(QStringLiteral("irautox://") + pending.section(QLatin1Char('|'), 0, 0) + QLatin1Char('/') + pending.section(QLatin1Char('|'), 1)); }); }
         return;
     }
 
@@ -1049,14 +1103,7 @@ void MainWindow::renderStore()
         image->setFixedHeight(138);
         image->setAlignment(Qt::AlignCenter);
         image->setObjectName(QStringLiteral("storeImage"));
-        // IRAUTOX_PATCH_V2: the store always prefers the real game icon, not a generic/banner image.
-        QPixmap gameIcon = decodedPixmap(game.value(QStringLiteral("icon")).toString(), QSize(116, 116), true);
-        if (!gameIcon.isNull()) {
-            image->setPixmap(gameIcon);
-        } else {
-            QPixmap banner = decodedPixmap(game.value(QStringLiteral("banner")).toString(), QSize(340, 132), true);
-            image->setPixmap(banner.isNull() ? QIcon(QStringLiteral(":/logo.svg")).pixmap(72, 72) : banner);
-        }
+        applyGameIcon(image, game, QSize(116, 116));
         auto *nameLabel = new QLabel(name, card);
         nameLabel->setObjectName(QStringLiteral("sectionTitle"));
         auto *meta = new QLabel(tr("نسخه %1").arg(game.value(QStringLiteral("version")).toString(QStringLiteral("1.0"))), card);
@@ -1106,8 +1153,7 @@ void MainWindow::renderLibrary()
             icon->setFixedSize(72, 72);
             icon->setAlignment(Qt::AlignCenter);
             const QJsonObject metadata = m_games.value(game.id);
-            QPixmap pix = decodedPixmap(metadata.value(QStringLiteral("icon")).toString(), QSize(68, 68), true);
-            icon->setPixmap(pix.isNull() ? QIcon(QStringLiteral(":/logo.svg")).pixmap(58, 58) : pix);
+            applyGameIcon(icon, metadata, QSize(68, 68));
             auto *info = new QVBoxLayout;
             auto *name = new QLabel(game.name, row);
             name->setObjectName(QStringLiteral("sectionTitle"));
@@ -1254,8 +1300,7 @@ void MainWindow::updateDetail(const QJsonObject &game, const QJsonArray &reviews
     m_detailName->setText(game.value(QStringLiteral("name")).toString(tr("بدون نام")));
     m_detailVersion->setText(tr("نسخه %1").arg(game.value(QStringLiteral("version")).toString(QStringLiteral("1.0"))));
     m_detailDescription->setText(game.value(QStringLiteral("desc")).toString(tr("توضیحی برای این بازی ثبت نشده است.")));
-    QPixmap icon = decodedPixmap(game.value(QStringLiteral("icon")).toString(), QSize(86, 86), true);
-    m_detailIcon->setPixmap(icon.isNull() ? QIcon(QStringLiteral(":/logo.svg")).pixmap(72, 72) : icon);
+    applyGameIcon(m_detailIcon, game, QSize(86, 86));
     QPixmap banner = decodedPixmap(game.value(QStringLiteral("banner")).toString(), QSize(1000, 230), true);
     if (banner.isNull()) {
         m_detailBanner->setPixmap(QPixmap{});
@@ -1270,6 +1315,7 @@ void MainWindow::updateDetail(const QJsonObject &game, const QJsonArray &reviews
 
 void MainWindow::installCurrentGame(bool update)
 {
+    if (gameSessionActive()) { QMessageBox::information(this, tr("در حال بازی"), tr("تا وقتی یک بازی در حال اجراست، نصب یا بروزرسانی بازی دیگری غیرفعال است.")); return; }
     if (m_currentGameId <= 0)
         return;
     const QString urlText = m_currentGame.value(QStringLiteral("url")).toString(m_currentGame.value(QStringLiteral("download_url")).toString());
@@ -1304,50 +1350,18 @@ void MainWindow::installCurrentGame(bool update)
 
 void MainWindow::onDownloadAdded(const DownloadRequest &request)
 {
-    if (m_downloadRows.isEmpty())
-        clearLayout(m_downloadsLayout);
-
-    auto *row = new QFrame;
-    row->setObjectName(QStringLiteral("downloadItem"));
-    row->setProperty("gameId", request.gameId);
-    auto *layout = new QVBoxLayout(row);
-    layout->setContentsMargins(14, 12, 14, 12);
-    layout->setSpacing(7);
-
-    auto *top = new QHBoxLayout;
-    top->setSpacing(10);
-    auto *icon = new QLabel(row);
-    icon->setObjectName(QStringLiteral("downloadGameIcon"));
-    icon->setFixedSize(44, 44);
-    icon->setAlignment(Qt::AlignCenter);
-    const QJsonObject metadata = m_games.value(request.gameId);
-    const QPixmap pix = decodedPixmap(metadata.value(QStringLiteral("icon")).toString(), QSize(42, 42), true);
-    icon->setPixmap(pix.isNull() ? QIcon(QStringLiteral(":/logo.svg")).pixmap(34, 34) : pix);
-
-    auto *name = new QLabel(request.gameName, row);
-    name->setObjectName(QStringLiteral("downloadName"));
-    auto *state = new QLabel(request.update ? tr("بروزرسانی") : tr("نصب"), row);
-    state->setProperty("role", QStringLiteral("state"));
-    state->setObjectName(QStringLiteral("downloadState"));
-    top->addWidget(icon);
-    top->addWidget(name);
-    top->addStretch();
-    top->addWidget(state);
-
-    auto *progress = new QProgressBar(row);
-    progress->setProperty("role", QStringLiteral("progress"));
-    progress->setRange(0, 100);
-    progress->setFixedHeight(5);
-
-    auto *meta = new QLabel(tr("در صف"), row);
-    meta->setProperty("role", QStringLiteral("meta"));
-    meta->setObjectName(QStringLiteral("downloadMeta"));
-
-    layout->addLayout(top);
-    layout->addWidget(progress);
-    layout->addWidget(meta);
-    m_downloadsLayout->addWidget(row);
-    m_downloadRows.insert(request.gameId, row);
+    if (m_downloadRows.isEmpty()) clearLayout(m_downloadsGrid);
+    auto *row = new QFrame; row->setObjectName(QStringLiteral("downloadItem")); row->setProperty("gameId", request.gameId); row->setMinimumWidth(220); row->setMaximumWidth(320);
+    auto *layout = new QVBoxLayout(row); layout->setContentsMargins(11, 10, 11, 10); layout->setSpacing(6);
+    auto *top = new QHBoxLayout; auto *icon = new QLabel(row); icon->setObjectName(QStringLiteral("downloadGameIcon")); icon->setFixedSize(38, 38); icon->setAlignment(Qt::AlignCenter);
+    applyGameIcon(icon, m_games.value(request.gameId), QSize(36, 36));
+    auto *name = new QLabel(request.gameName, row); name->setObjectName(QStringLiteral("downloadName")); name->setWordWrap(true);
+    auto *state = new QLabel(request.update ? tr("بروزرسانی") : tr("نصب"), row); state->setProperty("role", QStringLiteral("state")); state->setObjectName(QStringLiteral("downloadState"));
+    top->addWidget(icon); top->addWidget(name, 1); top->addWidget(state);
+    auto *progress = new QProgressBar(row); progress->setProperty("role", QStringLiteral("progress")); progress->setRange(0, 100); progress->setFixedHeight(5);
+    auto *meta = new QLabel(tr("در صف"), row); meta->setProperty("role", QStringLiteral("meta")); meta->setObjectName(QStringLiteral("downloadMeta"));
+    layout->addLayout(top); layout->addWidget(progress); layout->addWidget(meta);
+    const int index = m_downloadRows.size(); m_downloadsGrid->addWidget(row, index / 3, index % 3); m_downloadRows.insert(request.gameId, row);
 }
 
 void MainWindow::onDownloadProgress(qint64 gameId, DownloadManager::State state, int percent,
@@ -1414,6 +1428,7 @@ void MainWindow::onDownloadFailed(qint64 gameId, const QString &error)
 
 void MainWindow::checkAndLaunch(qint64 gameId)
 {
+    if (gameSessionActive()) { QMessageBox::information(this, tr("در حال بازی"), tr("یک بازی هم‌اکنون در حال اجراست. ابتدا آن را ببندید.")); return; }
     if (!m_library.find(gameId)) {
         showGameDetails(gameId);
         return;
@@ -1534,15 +1549,14 @@ void MainWindow::openInstallDirectory(qint64 gameId)
 void MainWindow::createDesktopShortcut(qint64 gameId)
 {
     const InstalledGame *game = m_library.find(gameId);
-    if (!game)
-        return;
-    QString iconPath;
-    const QString executable = QDir(game->rootPath).absoluteFilePath(game->executable);
-    if (QFileInfo::exists(executable))
-        iconPath = executable;
-    QString error;
-    if (!ShortcutManager::createGameShortcut(gameId, game->name, iconPath, &error) && !error.isEmpty())
-        m_tray->showMessage(tr("شورتکات"), error, QSystemTrayIcon::Warning, 3500);
+    if (!game) return;
+    const QJsonObject metadata = m_games.value(gameId);
+    QString value = metadata.value(QStringLiteral("icon")).toString(); if (value.isEmpty()) value = metadata.value(QStringLiteral("icon_url")).toString();
+    const QString iconDir = QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)).filePath(QStringLiteral("icons")); QDir().mkpath(iconDir);
+    const QString icoPath = QDir(iconDir).filePath(QStringLiteral("game-%1.ico").arg(gameId));
+    auto finish = [this, gameId, game, icoPath](const QPixmap &pix) { QString iconPath; if (!pix.isNull() && pix.toImage().save(icoPath, "ICO")) iconPath = icoPath; if (iconPath.isEmpty()) { const QString exe = QDir(game->rootPath).absoluteFilePath(game->executable); if (QFileInfo::exists(exe)) iconPath = exe; } QString error; if (!ShortcutManager::createGameShortcut(gameId, game->name, iconPath, &error) && !error.isEmpty()) m_tray->showMessage(tr("شورتکات"), error, QSystemTrayIcon::Warning, 3500); };
+    if (value.startsWith(QStringLiteral("http://"), Qt::CaseInsensitive) || value.startsWith(QStringLiteral("https://"), Qt::CaseInsensitive)) { QNetworkRequest req(QUrl(value)); req.setTransferTimeout(7000); QNetworkReply *reply = m_assetNetwork->get(req); connect(reply, &QNetworkReply::finished, this, [reply, finish] { QByteArray bytes = reply->readAll(); const bool ok = reply->error() == QNetworkReply::NoError; reply->deleteLater(); QPixmap pix; if (ok) pix.loadFromData(bytes); finish(pix); }); return; }
+    finish(decodedPixmap(value, QSize(256, 256), true));
 }
 
 void MainWindow::uninstallGame(qint64 gameId)
@@ -1573,7 +1587,6 @@ void MainWindow::saveSettings()
     if (m_downloadPath->text().trimmed().isEmpty())
         return;
     m_settings.setDownloadRoot(m_downloadPath->text());
-    m_settings.setServer(m_serverHost->text(), static_cast<quint16>(m_serverPort->value()));
     m_settings.setMinimizeToTray(m_minimizeToTray->isChecked());
     m_settings.setCloseToTray(m_closeToTray->isChecked());
     m_settings.setLaunchOnStartup(m_startWithWindows->isChecked());
@@ -1625,7 +1638,7 @@ void MainWindow::uploadAvatar()
         {QStringLiteral("image"), data}
     });
     QPixmap preview(path);
-    m_profileAvatar->setPixmap(preview.scaled(104, 104, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation));
+    m_profileAvatar->setPixmap(circularPixmap(preview, QSize(104, 104)));
 }
 
 void MainWindow::submitReview()
