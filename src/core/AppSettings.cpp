@@ -22,8 +22,9 @@ quint16 AppSettings::serverPort() const
 
 QString AppSettings::downloadRoot() const
 {
-    const QString games = QStandardPaths::writableLocation(QStandardPaths::GamesLocation);
-    const QString fallback = QDir(games.isEmpty() ? QDir::homePath() : games).filePath(QStringLiteral("IrAutoX"));
+    const QString documents = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    const QString fallback = QDir(documents.isEmpty() ? QDir::homePath() : documents)
+                                 .filePath(QStringLiteral("IrAutoX Games"));
     return m_settings.value(QStringLiteral("downloads/root"), fallback).toString();
 }
 
@@ -81,4 +82,3 @@ void AppSettings::setLaunchOnStartup(bool enabled)
 }
 
 } // namespace irautox
-

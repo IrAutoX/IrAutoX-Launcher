@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QMetaType>
 #include <QString>
 
 namespace irautox {
@@ -18,4 +19,3 @@ public:
 } // namespace irautox
 
 Q_DECLARE_METATYPE(irautox::ArchiveResult)
-
