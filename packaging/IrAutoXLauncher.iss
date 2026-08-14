@@ -29,7 +29,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName=IrAutoX Launcher
 CloseApplications=yes
-RestartApplications=no
+RestartApplications=yes
 SetupLogging=yes
 VersionInfoVersion={#Version}.0
 VersionInfoCompany=IrAutoX
@@ -45,6 +45,7 @@ Name: "startup"; Description: "Start IrAutoX Launcher with Windows"; GroupDescri
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "setup.install"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\IrAutoX Launcher"; Filename: "{app}\IrAutoXLauncher.exe"
@@ -52,7 +53,8 @@ Name: "{autodesktop}\IrAutoX Launcher"; Filename: "{app}\IrAutoXLauncher.exe"; T
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "IrAutoXLauncher"; ValueData: """{app}\IrAutoXLauncher.exe"" --background"; Flags: uninsdeletevalue; Tasks: startup
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "IrAutoXUpdater"; ValueData: """{app}\IrAutoXUpdater.exe"" --background"; Flags: uninsdeletevalue
 
 [Run]
-Filename: "{app}\IrAutoXLauncher.exe"; Description: "Launch IrAutoX"; Flags: nowait postinstall skipifsilent
-
+Filename: "{app}\IrAutoXUpdater.exe"; Parameters: "--background"; Flags: nowait runhidden
+Filename: "{app}\IrAutoXLauncher.exe"; Description: "Launch IrAutoX"; Flags: nowait postinstall
