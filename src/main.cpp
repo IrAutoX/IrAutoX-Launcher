@@ -9,7 +9,9 @@
 #include <QIcon>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QMessageBox>
 #include <QProcess>
+#include <QStandardPaths>
 #include <QTimer>
 
 namespace {
@@ -80,6 +82,10 @@ int main(int argc, char *argv[])
     window.setWindowFlag(Qt::FramelessWindowHint, true);
 
     auto dispatchRoute = [&window](const QString &route) {
+        if (route == QStringLiteral("quit-update")) {
+            QCoreApplication::quit();
+            return;
+        }
         if (route.startsWith(QStringLiteral("launch:"))) {
             bool ok = false;
             const qint64 gameId = route.mid(7).toLongLong(&ok);
@@ -105,10 +111,23 @@ int main(int argc, char *argv[])
     if (initialRoute.startsWith(QStringLiteral("launch:")) || initialRoute.startsWith(QStringLiteral("uri:")))
         QTimer::singleShot(0, &app, [dispatchRoute, initialRoute] { dispatchRoute(initialRoute); });
 
+    const QString pendingUpdate = QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
+                                      .filePath(QStringLiteral("updater/update-pending.txt"));
+    QFile marker(pendingUpdate);
+    if (marker.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        const QString version = QString::fromUtf8(marker.readAll()).trimmed();
+        marker.close();
+        QFile::remove(pendingUpdate);
+        QTimer::singleShot(1800, &window, [&window, version] {
+            QMessageBox::information(&window, QStringLiteral("IrAutoX"),
+                                     QStringLiteral("بروزرسانی %1 با موفقیت نصب شد. ممنون که IrAutoX را به‌روز نگه می‌دارید.").arg(version));
+        });
+    }
+
     if (!app.arguments().contains(QStringLiteral("--no-updater"))) {
         const QString updater = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("IrAutoXUpdater.exe"));
         if (QFile::exists(updater))
-            QTimer::singleShot(120, &app, [updater] { QProcess::startDetached(updater, {QStringLiteral("--background"), QStringLiteral("--fast-check")}); });
+            QTimer::singleShot(100, &app, [updater] { QProcess::startDetached(updater, {QStringLiteral("--background"), QStringLiteral("--fast-check")}); });
     }
 
     return app.exec();
