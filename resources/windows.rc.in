@@ -1,5 +1,6 @@
 #include <windows.h>
 
+IDI_ICON1 ICON "@CMAKE_CURRENT_SOURCE_DIR@/resources/app.ico"
 1 RT_MANIFEST "@CMAKE_CURRENT_SOURCE_DIR@/resources/app.manifest"
 
 VS_VERSION_INFO VERSIONINFO
@@ -20,7 +21,7 @@ BEGIN
     BLOCK "040904b0"
     BEGIN
       VALUE "CompanyName", "IrAutoX\0"
-      VALUE "FileDescription", "IrAutoX Launcher\0"
+      VALUE "FileDescription", "IrAutoX Game Launcher\0"
       VALUE "FileVersion", "@PROJECT_VERSION@\0"
       VALUE "InternalName", "IrAutoXLauncher\0"
       VALUE "OriginalFilename", "IrAutoXLauncher.exe\0"
