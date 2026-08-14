@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(IrAutoXLauncher
-    VERSION 2.0.0
+    VERSION 2.0.1
     DESCRIPTION "IrAutoX game launcher"
     LANGUAGES CXX
 )
@@ -21,6 +21,12 @@ qt_standard_project_setup()
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/resources/windows.rc.in"
     "${CMAKE_CURRENT_BINARY_DIR}/windows.rc"
+    @ONLY
+)
+
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/resources/updater.rc.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/updater.rc"
     @ONLY
 )
 
@@ -57,6 +63,10 @@ qt_add_executable(IrAutoXLauncher WIN32 ${IRAUTOX_SOURCES})
 qt_add_executable(IrAutoXUpdater WIN32 src/updater/main.cpp)
 qt_add_executable(irxcmd WIN32 src/irxcmd/main.cpp)
 
+if(WIN32)
+    target_sources(IrAutoXUpdater PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/updater.rc")
+endif()
+
 target_include_directories(IrAutoXLauncher PRIVATE src)
 target_compile_definitions(IrAutoXLauncher PRIVATE QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII IRAUTOX_VERSION="${PROJECT_VERSION}")
 target_compile_definitions(IrAutoXUpdater PRIVATE IRAUTOX_VERSION="${PROJECT_VERSION}")
@@ -71,7 +81,7 @@ if(MSVC)
     target_compile_options(IrAutoXUpdater PRIVATE /W4 /permissive- /utf-8 /EHsc)
     target_compile_options(irxcmd PRIVATE /W4 /permissive- /utf-8 /EHsc)
     target_link_options(IrAutoXLauncher PRIVATE /SUBSYSTEM:WINDOWS /MANIFEST:NO)
-    target_link_options(IrAutoXUpdater PRIVATE /SUBSYSTEM:WINDOWS)
+    target_link_options(IrAutoXUpdater PRIVATE /SUBSYSTEM:WINDOWS /MANIFEST:NO)
     target_link_options(irxcmd PRIVATE /SUBSYSTEM:WINDOWS)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(IrAutoXLauncher PRIVATE -Wall -Wextra -Wpedantic)
@@ -81,7 +91,7 @@ endif()
 
 if(WIN32)
     target_link_libraries(IrAutoXLauncher PRIVATE crypt32 dwmapi shell32 ole32)
-    target_link_libraries(IrAutoXUpdater PRIVATE crypt32)
+    target_link_libraries(IrAutoXUpdater PRIVATE crypt32 shell32)
 endif()
 
 install(TARGETS IrAutoXLauncher IrAutoXUpdater irxcmd RUNTIME DESTINATION .)
