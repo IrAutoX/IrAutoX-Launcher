@@ -60,7 +60,7 @@ if(WIN32)
 endif()
 
 qt_add_executable(IrAutoXLauncher WIN32 ${IRAUTOX_SOURCES})
-qt_add_executable(IrAutoXUpdater WIN32 src/updater/main.cpp)
+qt_add_executable(IrAutoXUpdater WIN32 src/updater/main_v5.cpp)
 qt_add_executable(irxcmd WIN32 src/irxcmd/main.cpp)
 
 if(WIN32)
