@@ -2,22 +2,24 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
-#include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QMessageBox>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QProcess>
 #include <QSaveFile>
 #include <QStandardPaths>
-#include <QTemporaryDir>
 #include <QTimer>
 #include <QUrl>
 #include <QVersionNumber>
 
 namespace {
 constexpr auto kLatestReleaseApi = "https://api.github.com/repos/IrAutoX/IrAutoX-Launcher/releases/latest";
+constexpr int kBackgroundCheckIntervalMs = 30 * 60 * 1000;
 
 class Updater final : public QObject {
     Q_OBJECT
@@ -25,32 +27,48 @@ public:
     explicit Updater(bool background, QObject *parent = nullptr)
         : QObject(parent), m_background(background)
     {
+        if (m_background) {
+            m_pollTimer.setInterval(kBackgroundCheckIntervalMs);
+            connect(&m_pollTimer, &QTimer::timeout, this, &Updater::check);
+            m_pollTimer.start();
+        }
         QTimer::singleShot(0, this, &Updater::check);
     }
 
 private slots:
     void check()
     {
+        if (m_checkInFlight)
+            return;
+        m_checkInFlight = true;
+
         QNetworkRequest request(QUrl(QString::fromLatin1(kLatestReleaseApi)));
         request.setRawHeader("Accept", "application/vnd.github+json");
-        request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("IrAutoX-Updater/%1").arg(QString::fromLatin1(IRAUTOX_VERSION)));
+        request.setHeader(QNetworkRequest::UserAgentHeader,
+                          QStringLiteral("IrAutoX-Updater/%1").arg(QString::fromLatin1(IRAUTOX_VERSION)));
         QNetworkReply *reply = m_network.get(request);
         connect(reply, &QNetworkReply::finished, this, [this, reply] {
             const QByteArray body = reply->readAll();
             const auto error = reply->error();
             reply->deleteLater();
+            m_checkInFlight = false;
             if (error != QNetworkReply::NoError) {
                 finishSilentlyOrWarn(QStringLiteral("بررسی بروزرسانی لانچر ناموفق بود."));
                 return;
             }
+
             const QJsonObject root = QJsonDocument::fromJson(body).object();
             QString tag = root.value(QStringLiteral("tag_name")).toString();
             if (tag.startsWith(QLatin1Char('v')))
                 tag.remove(0, 1);
-            if (QVersionNumber::compare(QVersionNumber::fromString(tag), QVersionNumber::fromString(QString::fromLatin1(IRAUTOX_VERSION))) <= 0) {
-                if (!m_background)
-                    QMessageBox::information(nullptr, QStringLiteral("IrAutoX Updater"), QStringLiteral("لانچر شما به‌روز است."));
-                QCoreApplication::quit();
+
+            if (QVersionNumber::compare(QVersionNumber::fromString(tag),
+                                        QVersionNumber::fromString(QString::fromLatin1(IRAUTOX_VERSION))) <= 0) {
+                if (!m_background) {
+                    QMessageBox::information(nullptr, QStringLiteral("IrAutoX Updater"),
+                                             QStringLiteral("لانچر شما به‌روز است."));
+                    QCoreApplication::quit();
+                }
                 return;
             }
 
@@ -68,9 +86,12 @@ private slots:
                 finishSilentlyOrWarn(QStringLiteral("فایل بروزرسانی Portable در Release پیدا نشد."));
                 return;
             }
+
             if (QMessageBox::question(nullptr, QStringLiteral("بروزرسانی IrAutoX"),
-                                      QStringLiteral("نسخه %1 آماده است. لانچر بسته و بروزرسانی شود؟").arg(tag)) != QMessageBox::Yes) {
-                QCoreApplication::quit();
+                                      QStringLiteral("نسخه %1 آماده است. لانچر بسته و بروزرسانی شود؟").arg(tag))
+                != QMessageBox::Yes) {
+                if (!m_background)
+                    QCoreApplication::quit();
                 return;
             }
             download(QUrl(assetUrl));
@@ -113,21 +134,33 @@ private slots:
             finishSilentlyOrWarn(QStringLiteral("ساخت اسکریپت بروزرسانی ممکن نبود."));
             return;
         }
+
+        QString escapedAppDir = appDir;
+        QString escapedZipPath = m_zipPath;
+        QString escapedLauncher = launcher;
+        escapedAppDir.replace(QLatin1Char('\''), QStringLiteral("''"));
+        escapedZipPath.replace(QLatin1Char('\''), QStringLiteral("''"));
+        escapedLauncher.replace(QLatin1Char('\''), QStringLiteral("''"));
+
         const QString ps = QStringLiteral(
             "$ErrorActionPreference='Stop'\n"
-            "Start-Sleep -Milliseconds 700\n"
+            "Start-Sleep -Milliseconds 900\n"
             "$dest='%1'\n"
             "$zip='%2'\n"
             "$tmp=Join-Path $env:TEMP 'IrAutoX-Launcher-unpack'\n"
+            "Get-Process IrAutoXLauncher -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue\n"
             "Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue\n"
             "Expand-Archive -Path $zip -DestinationPath $tmp -Force\n"
             "Get-ChildItem $tmp -Force | ForEach-Object { Copy-Item $_.FullName -Destination $dest -Recurse -Force }\n"
             "Start-Process '%3'\n"
             "Remove-Item $zip -Force -ErrorAction SilentlyContinue\n"
             "Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue\n")
-            .arg(appDir.replace("'", "''"), m_zipPath.replace("'", "''"), launcher.replace("'", "''"));
+            .arg(escapedAppDir, escapedZipPath, escapedLauncher);
         file.write(ps.toUtf8());
-        file.commit();
+        if (!file.commit()) {
+            finishSilentlyOrWarn(QStringLiteral("ذخیره اسکریپت بروزرسانی ممکن نبود."));
+            return;
+        }
         QProcess::startDetached(QStringLiteral("powershell.exe"),
                                 {QStringLiteral("-NoProfile"), QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"),
                                  QStringLiteral("-File"), script});
@@ -137,17 +170,21 @@ private slots:
 #endif
     }
 
+private:
     void finishSilentlyOrWarn(const QString &message)
     {
-        if (!m_background)
+        if (!m_background) {
             QMessageBox::warning(nullptr, QStringLiteral("IrAutoX Updater"), message);
-        QCoreApplication::quit();
+            QCoreApplication::quit();
+        }
     }
 
     bool m_background = false;
+    bool m_checkInFlight = false;
     QNetworkAccessManager m_network;
     QFile m_output;
     QString m_zipPath;
+    QTimer m_pollTimer;
 };
 }
 
