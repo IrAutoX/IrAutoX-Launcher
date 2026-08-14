@@ -9,6 +9,7 @@
 #include <QJsonObject>
 #include <QMainWindow>
 #include <QPoint>
+#include <QSize>
 
 class QButtonGroup;
 class QCheckBox;

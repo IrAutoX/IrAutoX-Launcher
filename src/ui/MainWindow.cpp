@@ -199,6 +199,12 @@ MainWindow::~MainWindow() = default;
 
 void MainWindow::setStartupGameId(qint64 gameId)
 {
+    if (gameId <= 0)
+        return;
+    if (!m_user.isEmpty()) {
+        QTimer::singleShot(0, this, [this, gameId] { checkAndLaunch(gameId); });
+        return;
+    }
     m_startupGameId = gameId;
 }
 
@@ -247,7 +253,7 @@ void MainWindow::applyGameIcon(QLabel *label, const QJsonObject &game, const QSi
     };
     if (value.startsWith(QStringLiteral("http://"), Qt::CaseInsensitive) || value.startsWith(QStringLiteral("https://"), Qt::CaseInsensitive)) {
         label->setPixmap(QIcon(QStringLiteral(":/logo.svg")).pixmap(size));
-        QNetworkRequest request(QUrl(value));
+        QNetworkRequest request{QUrl(value)};
         request.setTransferTimeout(7000);
         request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
         QNetworkReply *reply = m_assetNetwork->get(request);
@@ -1555,7 +1561,7 @@ void MainWindow::createDesktopShortcut(qint64 gameId)
     const QString iconDir = QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)).filePath(QStringLiteral("icons")); QDir().mkpath(iconDir);
     const QString icoPath = QDir(iconDir).filePath(QStringLiteral("game-%1.ico").arg(gameId));
     auto finish = [this, gameId, game, icoPath](const QPixmap &pix) { QString iconPath; if (!pix.isNull() && pix.toImage().save(icoPath, "ICO")) iconPath = icoPath; if (iconPath.isEmpty()) { const QString exe = QDir(game->rootPath).absoluteFilePath(game->executable); if (QFileInfo::exists(exe)) iconPath = exe; } QString error; if (!ShortcutManager::createGameShortcut(gameId, game->name, iconPath, &error) && !error.isEmpty()) m_tray->showMessage(tr("شورتکات"), error, QSystemTrayIcon::Warning, 3500); };
-    if (value.startsWith(QStringLiteral("http://"), Qt::CaseInsensitive) || value.startsWith(QStringLiteral("https://"), Qt::CaseInsensitive)) { QNetworkRequest req(QUrl(value)); req.setTransferTimeout(7000); QNetworkReply *reply = m_assetNetwork->get(req); connect(reply, &QNetworkReply::finished, this, [reply, finish] { QByteArray bytes = reply->readAll(); const bool ok = reply->error() == QNetworkReply::NoError; reply->deleteLater(); QPixmap pix; if (ok) pix.loadFromData(bytes); finish(pix); }); return; }
+    if (value.startsWith(QStringLiteral("http://"), Qt::CaseInsensitive) || value.startsWith(QStringLiteral("https://"), Qt::CaseInsensitive)) { QNetworkRequest req{QUrl(value)}; req.setTransferTimeout(7000); QNetworkReply *reply = m_assetNetwork->get(req); connect(reply, &QNetworkReply::finished, this, [reply, finish] { QByteArray bytes = reply->readAll(); const bool ok = reply->error() == QNetworkReply::NoError; reply->deleteLater(); QPixmap pix; if (ok) pix.loadFromData(bytes); finish(pix); }); return; }
     finish(decodedPixmap(value, QSize(256, 256), true));
 }
 
