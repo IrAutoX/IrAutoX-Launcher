@@ -61,18 +61,28 @@ jobs:
         run: |
           $version = "2.0.0"
           $isRelease = $false
+          $isPreview = $false
+          $releaseTag = ""
           if ("${{ github.ref_type }}" -eq "tag") {
             $version = "${{ github.ref_name }}".TrimStart("v")
             $isRelease = $true
+            $releaseTag = "${{ github.ref_name }}"
           } elseif ($env:GITHUB_REF -eq "refs/heads/main") {
             $releaseMatch = [regex]::Match([string]$env:COMMIT_MESSAGE, '^Release v([0-9]+\.[0-9]+\.[0-9]+)')
             if ($releaseMatch.Success) {
               $version = $releaseMatch.Groups[1].Value
               $isRelease = $true
+              $releaseTag = "v$version"
             }
+          } elseif ($env:GITHUB_REF -eq "refs/heads/agent/steam-ui-updater-launch-routing") {
+            $isRelease = $true
+            $isPreview = $true
+            $releaseTag = "preview-steam-ui-${{ github.run_number }}"
           }
           "version=$version" >> $env:GITHUB_OUTPUT
           "is_release=$($isRelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "is_preview=$($isPreview.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
 
       - name: Create portable package
         shell: pwsh
@@ -104,9 +114,10 @@ jobs:
         if: steps.version.outputs.is_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
+          tag_name: ${{ steps.version.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
-          name: IrAutoX Launcher v${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.is_preview == 'true' && 'IrAutoX Launcher Preview' || format('IrAutoX Launcher v{0}', steps.version.outputs.version) }}
+          prerelease: ${{ steps.version.outputs.is_preview == 'true' }}
           generate_release_notes: true
           files: |
             release/*-Portable.zip
