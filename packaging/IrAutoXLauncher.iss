@@ -5,7 +5,7 @@
   #define OutputDir "..\\release"
 #endif
 #ifndef Version
-  #define Version "2.0.0"
+  #define Version "2.0.1"
 #endif
 
 [Setup]
@@ -26,7 +26,7 @@ OutputBaseFilename=IrAutoX-Launcher-v{#Version}-Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
-PrivilegesRequired=lowest
+PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -58,10 +58,11 @@ Name: "{autodesktop}\IrAutoX Launcher"; Filename: "{app}\IrAutoXLauncher.exe"; W
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "IrAutoXLauncher"; ValueData: """{app}\IrAutoXLauncher.exe"" --background"; Flags: uninsdeletevalue; Tasks: startup
+Root: HKCU; Subkey: "Software\IrAutoX\Launcher"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\irautox"; ValueType: string; ValueName: ""; ValueData: "URL:IrAutoX Protocol"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\irautox"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
 Root: HKCU; Subkey: "Software\Classes\irautox\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\IrAutoXLauncher.exe,0"
 Root: HKCU; Subkey: "Software\Classes\irautox\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\irxcmd.exe"" ""%1"""
 
 [Run]
-Filename: "{app}\IrAutoXLauncher.exe"; Description: "Launch IrAutoX Launcher"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\IrAutoXLauncher.exe"; Description: "Launch IrAutoX Launcher"; Flags: nowait runasoriginaluser skipifdoesntexist
