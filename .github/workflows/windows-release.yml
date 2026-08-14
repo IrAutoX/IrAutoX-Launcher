@@ -44,12 +44,14 @@ jobs:
         run: |
           cmake --install build --config Release --prefix dist
           windeployqt --release --compiler-runtime --no-translations --no-opengl-sw dist/IrAutoXLauncher.exe
+          windeployqt --release --compiler-runtime --no-translations --no-opengl-sw dist/IrAutoXUpdater.exe
 
-      - name: Compress launcher with UPX
+      - name: Compress executables with UPX
         shell: pwsh
         run: |
           choco install upx --no-progress -y
           upx --best --lzma dist/IrAutoXLauncher.exe
+          upx --best --lzma dist/IrAutoXUpdater.exe
 
       - name: Resolve version
         id: version
