@@ -8,6 +8,7 @@
 #include <QHash>
 #include <QJsonObject>
 #include <QMainWindow>
+#include <QPoint>
 
 class QButtonGroup;
 class QCheckBox;
@@ -19,6 +20,7 @@ class QGridLayout;
 class QLabel;
 class QLineEdit;
 class QListWidget;
+class QMouseEvent;
 class QPlainTextEdit;
 class QProgressBar;
 class QPushButton;
@@ -40,10 +42,14 @@ class MainWindow final : public QMainWindow {
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
+    void setStartupGameId(qint64 gameId);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
     void changeEvent(QEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
 
 private slots:
     void onServerMessage(const QJsonObject &message);
@@ -68,6 +74,7 @@ private:
     QWidget *createSettingsPage();
     QWidget *createAdminPage();
     QWidget *createDetailPage();
+    QFrame *createWindowBar(QWidget *parent);
     void setupTray();
     void showLogin();
     void setCurrentPage(Page page);
@@ -85,6 +92,7 @@ private:
     void launchGame(qint64 gameId);
     void uninstallGame(qint64 gameId);
     void openInstallDirectory(qint64 gameId);
+    void createDesktopShortcut(qint64 gameId);
     void saveSettings();
     void applyStartupSetting(bool enabled);
     void logout();
@@ -109,6 +117,9 @@ private:
     QString m_sessionPassword;
     bool m_rememberSession = false;
     bool m_quitting = false;
+    bool m_draggingWindow = false;
+    QPoint m_dragOffset;
+    qint64 m_startupGameId = 0;
 
     QHash<qint64, QJsonObject> m_games;
     QJsonObject m_currentGame;
