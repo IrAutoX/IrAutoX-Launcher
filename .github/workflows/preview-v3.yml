@@ -1,4 +1,4 @@
-name: Preview V3 Build
+name: Preview Updater V4 Build
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  preview-v3:
+  preview-v4:
     runs-on: windows-2022
     timeout-minutes: 35
 
@@ -17,14 +17,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Generate icon and apply preview source fixes
+      - name: Generate icon and finalize launcher sources
         shell: pwsh
         run: |
           magick resources/logo.svg -background none -define icon:auto-resize=256,128,64,48,32,24,16 resources/app.ico
           python tools/apply_launcher_preview_fixes.py
           python tools/finalize_preview_v3.py
 
-      - name: Commit generated preview sources
+      - name: Commit generated launcher sources
         shell: pwsh
         run: |
           $changes = git status --porcelain
@@ -32,9 +32,15 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add resources/app.ico resources/resources.qrc resources/theme.qss src/ui/MainWindow.cpp src/ui/MainWindow.h
-            git commit -m "Apply preview v3 UI and icon fixes [skip ci]"
+            git commit -m "Finalize persistent game icon cache [skip ci]"
             git push origin HEAD:agent/steam-ui-updater-launch-routing
           }
+
+      - name: Resolve target commit
+        id: meta
+        shell: pwsh
+        run: |
+          "sha=$((git rev-parse HEAD).Trim())" >> $env:GITHUB_OUTPUT
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -75,19 +81,19 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force release | Out-Null
-          Compress-Archive -Path dist/* -DestinationPath "release/IrAutoX-Launcher-v2.0.0-Portable.zip" -CompressionLevel Optimal
+          Compress-Archive -Path dist/* -DestinationPath "release/IrAutoX-Launcher-v2.0.1-Portable.zip" -CompressionLevel Optimal
 
       - name: Build installer
         shell: pwsh
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DSourceDir=$pwd\dist" "/DOutputDir=$pwd\release" "/DVersion=2.0.0" packaging/IrAutoXLauncher.iss
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DSourceDir=$pwd\dist" "/DOutputDir=$pwd\release" "/DVersion=2.0.1" packaging/IrAutoXLauncher.iss
 
       - name: Publish preview release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: preview-v3-${{ github.run_number }}
-          target_commitish: ${{ github.sha }}
-          name: IrAutoX Launcher Preview V3
+          tag_name: preview-updater-v4-${{ github.run_number }}
+          target_commitish: ${{ steps.meta.outputs.sha }}
+          name: IrAutoX Launcher 2.0.1 Updater Preview
           prerelease: true
           generate_release_notes: true
           files: |
