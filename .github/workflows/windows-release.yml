@@ -20,6 +20,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Prepare launcher preview sources
+        if: github.ref == 'refs/heads/agent/steam-ui-updater-launch-routing' || github.head_ref == 'agent/steam-ui-updater-launch-routing'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force third_party/vazirmatn | Out-Null
+          if (-not (Test-Path resources/Vazir.ttf)) {
+            Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/rastikerdar/vazirmatn/v33.003/fonts/ttf/Vazirmatn-Regular.ttf" -OutFile resources/Vazir.ttf
+          }
+          if (-not (Test-Path third_party/vazirmatn/OFL.txt)) {
+            Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/rastikerdar/vazirmatn/v33.003/OFL.txt" -OutFile third_party/vazirmatn/OFL.txt
+          }
+          if (-not (Test-Path third_party/vazirmatn/AUTHORS.txt)) {
+            Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/rastikerdar/vazirmatn/v33.003/AUTHORS.txt" -OutFile third_party/vazirmatn/AUTHORS.txt
+          }
+          python tools/apply_launcher_preview_fixes.py
+
+      - name: Commit preview source fixes to feature branch
+        if: github.event_name == 'push' && github.ref == 'refs/heads/agent/steam-ui-updater-launch-routing'
+        shell: pwsh
+        run: |
+          $changes = git status --porcelain
+          if ($changes) {
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add resources/Vazir.ttf third_party/vazirmatn/OFL.txt third_party/vazirmatn/AUTHORS.txt src/main.cpp src/ui/MainWindow.cpp src/ui/MainWindow.h resources/resources.qrc resources/theme.qss
+            git commit -m "Vendor Vazir font and polish launcher preview [skip ci]"
+            git push origin HEAD:agent/steam-ui-updater-launch-routing
+          }
+
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -63,6 +92,7 @@ jobs:
           $isRelease = $false
           $isPreview = $false
           $releaseTag = ""
+          $targetSha = (git rev-parse HEAD).Trim()
           if ("${{ github.ref_type }}" -eq "tag") {
             $version = "${{ github.ref_name }}".TrimStart("v")
             $isRelease = $true
@@ -83,6 +113,7 @@ jobs:
           "is_release=$($isRelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "is_preview=$($isPreview.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
+          "target_sha=$targetSha" >> $env:GITHUB_OUTPUT
 
       - name: Create portable package
         shell: pwsh
@@ -115,7 +146,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.release_tag }}
-          target_commitish: ${{ github.sha }}
+          target_commitish: ${{ steps.version.outputs.target_sha }}
           name: ${{ steps.version.outputs.is_preview == 'true' && 'IrAutoX Launcher Preview' || format('IrAutoX Launcher v{0}', steps.version.outputs.version) }}
           prerelease: ${{ steps.version.outputs.is_preview == 'true' }}
           generate_release_notes: true
