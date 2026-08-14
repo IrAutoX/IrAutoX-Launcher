@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(IrAutoXLauncher
     VERSION 2.0.0
-    DESCRIPTION "Native IrAutoX game launcher"
+    DESCRIPTION "IrAutoX game launcher"
     LANGUAGES CXX
 )
 
@@ -55,40 +55,36 @@ endif()
 
 qt_add_executable(IrAutoXLauncher WIN32 ${IRAUTOX_SOURCES})
 qt_add_executable(IrAutoXUpdater WIN32 src/updater/main.cpp)
+qt_add_executable(irxcmd WIN32 src/irxcmd/main.cpp)
 
 target_include_directories(IrAutoXLauncher PRIVATE src)
-target_compile_definitions(IrAutoXLauncher PRIVATE
-    QT_NO_CAST_FROM_ASCII
-    QT_NO_CAST_TO_ASCII
-    IRAUTOX_VERSION="${PROJECT_VERSION}"
-)
+target_compile_definitions(IrAutoXLauncher PRIVATE QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII IRAUTOX_VERSION="${PROJECT_VERSION}")
 target_compile_definitions(IrAutoXUpdater PRIVATE IRAUTOX_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(irxcmd PRIVATE IRAUTOX_VERSION="${PROJECT_VERSION}")
 
-target_link_libraries(IrAutoXLauncher PRIVATE
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Widgets
-    Qt6::Network
-    Qt6::Svg
-    Qt6::Concurrent
-)
+target_link_libraries(IrAutoXLauncher PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::Svg Qt6::Concurrent)
 target_link_libraries(IrAutoXUpdater PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network)
+target_link_libraries(irxcmd PRIVATE Qt6::Core Qt6::Network)
 
 if(MSVC)
     target_compile_options(IrAutoXLauncher PRIVATE /W4 /permissive- /utf-8 /EHsc)
     target_compile_options(IrAutoXUpdater PRIVATE /W4 /permissive- /utf-8 /EHsc)
+    target_compile_options(irxcmd PRIVATE /W4 /permissive- /utf-8 /EHsc)
     target_link_options(IrAutoXLauncher PRIVATE /SUBSYSTEM:WINDOWS /MANIFEST:NO)
     target_link_options(IrAutoXUpdater PRIVATE /SUBSYSTEM:WINDOWS)
+    target_link_options(irxcmd PRIVATE /SUBSYSTEM:WINDOWS)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(IrAutoXLauncher PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(IrAutoXUpdater PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(irxcmd PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 if(WIN32)
     target_link_libraries(IrAutoXLauncher PRIVATE crypt32 dwmapi shell32 ole32)
+    target_link_libraries(IrAutoXUpdater PRIVATE crypt32)
 endif()
 
-install(TARGETS IrAutoXLauncher IrAutoXUpdater RUNTIME DESTINATION .)
+install(TARGETS IrAutoXLauncher IrAutoXUpdater irxcmd RUNTIME DESTINATION .)
 
 if(IRAUTOX_BUILD_TESTS)
     enable_testing()
