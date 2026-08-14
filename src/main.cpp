@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
         window.activateWindow();
     };
 
-    connect(&routeServer, &QLocalServer::newConnection, &app, [&routeServer, dispatchRoute] {
+    QObject::connect(&routeServer, &QLocalServer::newConnection, &app, [&routeServer, dispatchRoute] {
         while (QLocalSocket *socket = routeServer.nextPendingConnection()) {
             QObject::connect(socket, &QLocalSocket::readyRead, socket, [socket, dispatchRoute] {
                 dispatchRoute(QString::fromUtf8(socket->readAll()).trimmed());
