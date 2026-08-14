@@ -36,7 +36,7 @@
 نیازمندی‌ها:
 
 - Visual Studio 2022 Build Tools
-- CMake 3.24 یا جدیدتر و Ninja
+- CMake 3.24 یا جدیدتر
 - Qt 6.5 یا جدیدتر با MSVC 2022 64-bit
 
 سپس:
@@ -48,7 +48,7 @@
 یا به‌صورت دستی:
 
 ```powershell
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DIRAUTOX_BUILD_TESTS=ON
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DIRAUTOX_BUILD_TESTS=ON
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 cmake --install build --prefix dist
