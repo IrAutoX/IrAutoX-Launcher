@@ -70,7 +70,9 @@ target_link_libraries(IrAutoXLauncher PRIVATE
 
 if(MSVC)
     target_compile_options(IrAutoXLauncher PRIVATE /W4 /permissive- /utf-8 /EHsc)
-    target_link_options(IrAutoXLauncher PRIVATE /SUBSYSTEM:WINDOWS)
+    # The application manifest is already embedded by resources/windows.rc.in.
+    # Disable the linker's generated manifest to avoid duplicate RT_MANIFEST id 1.
+    target_link_options(IrAutoXLauncher PRIVATE /SUBSYSTEM:WINDOWS /MANIFEST:NO)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(IrAutoXLauncher PRIVATE -Wall -Wextra -Wpedantic)
 endif()
