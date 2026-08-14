@@ -1,29 +1,14 @@
 #include "ui/MainWindow.h"
 
 #include <QApplication>
+#include <QCoreApplication>
+#include <QDir>
 #include <QFile>
 #include <QFont>
+#include <QFontDatabase>
 #include <QIcon>
-
-#ifdef Q_OS_WIN
-#  define WIN32_LEAN_AND_MEAN
-#  include <windows.h>
-#  include <dwmapi.h>
-#endif
-
-namespace {
-void enableDarkTitleBar(QWidget *window)
-{
-#ifdef Q_OS_WIN
-    const BOOL enabled = TRUE;
-    const HWND hwnd = reinterpret_cast<HWND>(window->winId());
-    constexpr DWORD useImmersiveDarkMode = 20;
-    DwmSetWindowAttribute(hwnd, useImmersiveDarkMode, &enabled, sizeof(enabled));
-#else
-    Q_UNUSED(window)
-#endif
-}
-}
+#include <QProcess>
+#include <QTimer>
 
 int main(int argc, char *argv[])
 {
@@ -35,14 +20,38 @@ int main(int argc, char *argv[])
     QApplication::setQuitOnLastWindowClosed(true);
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/logo.svg")));
     QApplication::setLayoutDirection(Qt::RightToLeft);
-    app.setFont(QFont(QStringLiteral("Segoe UI"), 10));
+
+    const QByteArray vazirData = QByteArray::fromBase64(QByteArrayLiteral(IRAUTOX_VAZIR_BASE64));
+    const int fontId = vazirData.isEmpty() ? -1 : QFontDatabase::addApplicationFontFromData(vazirData);
+    if (fontId >= 0) {
+        const QStringList families = QFontDatabase::applicationFontFamilies(fontId);
+        if (!families.isEmpty())
+            app.setFont(QFont(families.first(), 10));
+    }
+    if (fontId < 0)
+        app.setFont(QFont(QStringLiteral("Tahoma"), 10));
 
     QFile style(QStringLiteral(":/theme.qss"));
     if (style.open(QIODevice::ReadOnly))
         app.setStyleSheet(QString::fromUtf8(style.readAll()));
 
     irautox::MainWindow window;
-    enableDarkTitleBar(&window);
+    window.setWindowFlag(Qt::FramelessWindowHint, true);
+
+    const QStringList args = app.arguments();
+    const int routeIndex = args.indexOf(QStringLiteral("--launch-game"));
+    if (routeIndex >= 0 && routeIndex + 1 < args.size()) {
+        bool ok = false;
+        const qint64 gameId = args.at(routeIndex + 1).toLongLong(&ok);
+        if (ok && gameId > 0)
+            window.setStartupGameId(gameId);
+    }
+
+    if (!args.contains(QStringLiteral("--no-updater"))) {
+        const QString updater = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("IrAutoXUpdater.exe"));
+        if (QFile::exists(updater))
+            QTimer::singleShot(1800, &app, [updater] { QProcess::startDetached(updater, {QStringLiteral("--background")}); });
+    }
+
     return app.exec();
 }
-
