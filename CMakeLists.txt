@@ -93,13 +93,14 @@ target_link_libraries(IrAutoXUpdater PRIVATE
     Qt6::Gui
     Qt6::Widgets
     Qt6::Network
+    Qt6::Svg
 )
 
 if(MSVC)
     foreach(target IrAutoXLauncher IrAutoXUpdater)
         target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8 /EHsc)
-        target_link_options(${target} PRIVATE /SUBSYSTEM:WINDOWS /MANIFEST:NO)
     endforeach()
+    target_link_options(IrAutoXLauncher PRIVATE /MANIFEST:NO)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     foreach(target IrAutoXLauncher IrAutoXUpdater)
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
