@@ -1,0 +1,95 @@
+name: Windows Build and Release
+
+on:
+  push:
+    branches: [main, "agent/**"]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: Configure
+        shell: pwsh
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DIRAUTOX_BUILD_TESTS=ON
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        shell: pwsh
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Deploy Qt runtime
+        shell: pwsh
+        run: |
+          cmake --install build --config Release --prefix dist
+          windeployqt --release --compiler-runtime --no-translations --no-opengl-sw dist/IrAutoXLauncher.exe
+
+      - name: Compress launcher with UPX
+        shell: pwsh
+        run: |
+          choco install upx --no-progress -y
+          upx --best --lzma dist/IrAutoXLauncher.exe
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $version = "2.0.0"
+          if ("${{ github.ref_type }}" -eq "tag") { $version = "${{ github.ref_name }}".TrimStart("v") }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Create portable package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          Compress-Archive -Path dist/* -DestinationPath "release/IrAutoX-Launcher-v${{ steps.version.outputs.version }}-Portable.zip" -CompressionLevel Optimal
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DSourceDir=$pwd\dist" "/DOutputDir=$pwd\release" "/DVersion=${{ steps.version.outputs.version }}" packaging/IrAutoXLauncher.iss
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IrAutoX-Launcher-Portable
+          path: release/*-Portable.zip
+          if-no-files-found: error
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IrAutoX-Launcher-Setup
+          path: release/*-Setup.exe
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            release/*-Portable.zip
+            release/*-Setup.exe
