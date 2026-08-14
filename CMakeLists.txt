@@ -40,6 +40,8 @@ set(IRAUTOX_SOURCES
     src/core/ProtocolClient.h
     src/core/SecureStore.cpp
     src/core/SecureStore.h
+    src/core/ShortcutManager.cpp
+    src/core/ShortcutManager.h
     src/ui/LoginDialog.cpp
     src/ui/LoginDialog.h
     src/ui/MainWindow.cpp
@@ -52,6 +54,7 @@ if(WIN32)
 endif()
 
 qt_add_executable(IrAutoXLauncher WIN32 ${IRAUTOX_SOURCES})
+qt_add_executable(IrAutoXUpdater WIN32 src/updater/main.cpp)
 
 target_include_directories(IrAutoXLauncher PRIVATE src)
 target_compile_definitions(IrAutoXLauncher PRIVATE
@@ -59,6 +62,8 @@ target_compile_definitions(IrAutoXLauncher PRIVATE
     QT_NO_CAST_TO_ASCII
     IRAUTOX_VERSION="${PROJECT_VERSION}"
 )
+target_compile_definitions(IrAutoXUpdater PRIVATE IRAUTOX_VERSION="${PROJECT_VERSION}")
+
 target_link_libraries(IrAutoXLauncher PRIVATE
     Qt6::Core
     Qt6::Gui
@@ -67,21 +72,23 @@ target_link_libraries(IrAutoXLauncher PRIVATE
     Qt6::Svg
     Qt6::Concurrent
 )
+target_link_libraries(IrAutoXUpdater PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network)
 
 if(MSVC)
     target_compile_options(IrAutoXLauncher PRIVATE /W4 /permissive- /utf-8 /EHsc)
-    # The application manifest is already embedded by resources/windows.rc.in.
-    # Disable the linker's generated manifest to avoid duplicate RT_MANIFEST id 1.
+    target_compile_options(IrAutoXUpdater PRIVATE /W4 /permissive- /utf-8 /EHsc)
     target_link_options(IrAutoXLauncher PRIVATE /SUBSYSTEM:WINDOWS /MANIFEST:NO)
+    target_link_options(IrAutoXUpdater PRIVATE /SUBSYSTEM:WINDOWS)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(IrAutoXLauncher PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(IrAutoXUpdater PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 if(WIN32)
-    target_link_libraries(IrAutoXLauncher PRIVATE crypt32 dwmapi shell32)
+    target_link_libraries(IrAutoXLauncher PRIVATE crypt32 dwmapi shell32 ole32)
 endif()
 
-install(TARGETS IrAutoXLauncher RUNTIME DESTINATION .)
+install(TARGETS IrAutoXLauncher IrAutoXUpdater RUNTIME DESTINATION .)
 
 if(IRAUTOX_BUILD_TESTS)
     enable_testing()
