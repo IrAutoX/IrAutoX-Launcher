@@ -33,7 +33,10 @@ QString ShortcutManager::shortcutPath(qint64 gameId, const QString &gameName)
 bool ShortcutManager::createGameShortcut(qint64 gameId, const QString &gameName, const QString &iconPath, QString *error)
 {
 #ifdef Q_OS_WIN
-    const QString launcher = QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
+    const QString broker = QDir::toNativeSeparators(
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("irxcmd.exe")));
+    const QString fallbackLauncher = QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
+    const QString target = QFileInfo::exists(broker) ? broker : fallbackLauncher;
     const QString linkPath = QDir::toNativeSeparators(shortcutPath(gameId, gameName));
     const QString args = QStringLiteral("--launch-game %1").arg(gameId);
 
@@ -50,14 +53,19 @@ bool ShortcutManager::createGameShortcut(qint64 gameId, const QString &gameName,
     hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW,
                           reinterpret_cast<void **>(&shellLink));
     if (SUCCEEDED(hr)) {
-        shellLink->SetPath(reinterpret_cast<LPCWSTR>(launcher.utf16()));
+        shellLink->SetPath(reinterpret_cast<LPCWSTR>(target.utf16()));
         shellLink->SetArguments(reinterpret_cast<LPCWSTR>(args.utf16()));
-        shellLink->SetWorkingDirectory(reinterpret_cast<LPCWSTR>(QCoreApplication::applicationDirPath().utf16()));
+        const QString workDir = QDir::toNativeSeparators(QCoreApplication::applicationDirPath());
+        shellLink->SetWorkingDirectory(reinterpret_cast<LPCWSTR>(workDir.utf16()));
         shellLink->SetDescription(reinterpret_cast<LPCWSTR>(gameName.utf16()));
-        if (!iconPath.isEmpty() && QFileInfo::exists(iconPath))
-            shellLink->SetIconLocation(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(iconPath).utf16()), 0);
-        else
-            shellLink->SetIconLocation(reinterpret_cast<LPCWSTR>(launcher.utf16()), 0);
+
+        // Windows Shell links expect an icon resource location. Prefer a cached .ico;
+        // an EXE is also valid because it can contain icon resources.
+        QString chosenIcon = iconPath;
+        if (chosenIcon.isEmpty() || !QFileInfo::exists(chosenIcon))
+            chosenIcon = fallbackLauncher;
+        chosenIcon = QDir::toNativeSeparators(chosenIcon);
+        shellLink->SetIconLocation(reinterpret_cast<LPCWSTR>(chosenIcon.utf16()), 0);
 
         IPersistFile *persist = nullptr;
         hr = shellLink->QueryInterface(IID_IPersistFile, reinterpret_cast<void **>(&persist));
