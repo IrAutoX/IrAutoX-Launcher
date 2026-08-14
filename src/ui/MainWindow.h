@@ -44,6 +44,7 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
     void setStartupGameId(qint64 gameId);
+    void handleProtocolUrl(const QString &url);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -104,6 +105,7 @@ private:
     void clearAdminForm();
     void writeInstallMarker(const DownloadRequest &request) const;
     bool hasValidInstallMarker(const InstalledGame &game) const;
+    bool gameSessionActive() const;
 
     static qint64 jsonId(const QJsonValue &value);
     static QString safeFolderName(const QString &name, qint64 id);
@@ -121,6 +123,7 @@ private:
     bool m_draggingWindow = false;
     QPoint m_dragOffset;
     qint64 m_startupGameId = 0;
+    QString m_startupGameName;
 
     QHash<qint64, QJsonObject> m_games;
     QJsonObject m_currentGame;
@@ -142,7 +145,7 @@ private:
 
     QGridLayout *m_storeGrid = nullptr;
     QVBoxLayout *m_libraryLayout = nullptr;
-    QVBoxLayout *m_downloadsLayout = nullptr;
+    QGridLayout *m_downloadsGrid = nullptr;
     QVBoxLayout *m_friendsLayout = nullptr;
     QVBoxLayout *m_requestsLayout = nullptr;
     QLabel *m_globalDownloadLabel = nullptr;
@@ -166,8 +169,6 @@ private:
 
     QLineEdit *m_friendUsername = nullptr;
     QLineEdit *m_downloadPath = nullptr;
-    QLineEdit *m_serverHost = nullptr;
-    QSpinBox *m_serverPort = nullptr;
     QCheckBox *m_minimizeToTray = nullptr;
     QCheckBox *m_closeToTray = nullptr;
     QCheckBox *m_startWithWindows = nullptr;
