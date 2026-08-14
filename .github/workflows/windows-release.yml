@@ -20,8 +20,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare launcher preview sources
-        if: github.ref == 'refs/heads/agent/steam-ui-updater-launch-routing' || github.head_ref == 'agent/steam-ui-updater-launch-routing'
+      - name: Prepare launcher assets
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force third_party/vazirmatn | Out-Null
@@ -34,9 +33,11 @@ jobs:
           if (-not (Test-Path third_party/vazirmatn/AUTHORS.txt)) {
             Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/rastikerdar/vazirmatn/v33.003/AUTHORS.txt" -OutFile third_party/vazirmatn/AUTHORS.txt
           }
+          python -m pip install --disable-pip-version-check --quiet pillow cairosvg
+          python tools/make_windows_icon.py
           python tools/apply_launcher_preview_fixes.py
 
-      - name: Commit preview source fixes to feature branch
+      - name: Commit generated preview assets
         if: github.event_name == 'push' && github.ref == 'refs/heads/agent/steam-ui-updater-launch-routing'
         shell: pwsh
         run: |
@@ -44,8 +45,8 @@ jobs:
           if ($changes) {
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add resources/Vazir.ttf third_party/vazirmatn/OFL.txt third_party/vazirmatn/AUTHORS.txt src/main.cpp src/ui/MainWindow.cpp src/ui/MainWindow.h resources/resources.qrc resources/theme.qss
-            git commit -m "Vendor Vazir font and polish launcher preview [skip ci]"
+            git add resources/app.ico resources/Vazir.ttf third_party/vazirmatn/OFL.txt third_party/vazirmatn/AUTHORS.txt resources/resources.qrc
+            git commit -m "Generate Windows icon and preview assets [skip ci]"
             git push origin HEAD:agent/steam-ui-updater-launch-routing
           }
 
@@ -74,6 +75,7 @@ jobs:
           cmake --install build --config Release --prefix dist
           windeployqt --release --compiler-runtime --no-translations --no-opengl-sw dist/IrAutoXLauncher.exe
           windeployqt --release --compiler-runtime --no-translations --no-opengl-sw dist/IrAutoXUpdater.exe
+          windeployqt --release --compiler-runtime --no-translations --no-opengl-sw dist/irxcmd.exe
 
       - name: Compress executables with UPX
         shell: pwsh
@@ -81,6 +83,7 @@ jobs:
           choco install upx --no-progress -y
           upx --best --lzma dist/IrAutoXLauncher.exe
           upx --best --lzma dist/IrAutoXUpdater.exe
+          upx --best --lzma dist/irxcmd.exe
 
       - name: Resolve version
         id: version
