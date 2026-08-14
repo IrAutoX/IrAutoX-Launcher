@@ -7,8 +7,42 @@
 #include <QFont>
 #include <QFontDatabase>
 #include <QIcon>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <QProcess>
 #include <QTimer>
+
+namespace {
+constexpr auto kInstanceName = "IrAutoXLauncher.SingleInstance.v2";
+
+QString routeFromArguments(const QStringList &args)
+{
+    const int routeIndex = args.indexOf(QStringLiteral("--launch-game"));
+    if (routeIndex >= 0 && routeIndex + 1 < args.size())
+        return QStringLiteral("launch:%1").arg(args.at(routeIndex + 1));
+    const int uriIndex = args.indexOf(QStringLiteral("--uri"));
+    if (uriIndex >= 0 && uriIndex + 1 < args.size())
+        return QStringLiteral("uri:%1").arg(args.at(uriIndex + 1));
+    for (const QString &arg : args) {
+        if (arg.startsWith(QStringLiteral("irautox://"), Qt::CaseInsensitive))
+            return QStringLiteral("uri:%1").arg(arg);
+    }
+    return QStringLiteral("activate");
+}
+
+bool forwardToExistingInstance(const QString &route)
+{
+    QLocalSocket socket;
+    socket.connectToServer(QString::fromLatin1(kInstanceName), QIODevice::WriteOnly);
+    if (!socket.waitForConnected(140))
+        return false;
+    socket.write(route.toUtf8());
+    socket.flush();
+    socket.waitForBytesWritten(140);
+    socket.disconnectFromServer();
+    return true;
+}
+}
 
 int main(int argc, char *argv[])
 {
@@ -21,7 +55,15 @@ int main(int argc, char *argv[])
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/logo.svg")));
     QApplication::setLayoutDirection(Qt::RightToLeft);
 
-    // IRAUTOX_PATCH_V2: the actual Vazirmatn Regular TTF is vendored as resources/Vazir.ttf.
+    const QString initialRoute = routeFromArguments(app.arguments());
+    if (forwardToExistingInstance(initialRoute))
+        return 0;
+
+    QLocalServer::removeServer(QString::fromLatin1(kInstanceName));
+    QLocalServer routeServer;
+    if (!routeServer.listen(QString::fromLatin1(kInstanceName)))
+        return 2;
+
     const int fontId = QFontDatabase::addApplicationFont(QStringLiteral(":/Vazir.ttf"));
     if (fontId >= 0) {
         const QStringList families = QFontDatabase::applicationFontFamilies(fontId);
@@ -37,19 +79,36 @@ int main(int argc, char *argv[])
     irautox::MainWindow window;
     window.setWindowFlag(Qt::FramelessWindowHint, true);
 
-    const QStringList args = app.arguments();
-    const int routeIndex = args.indexOf(QStringLiteral("--launch-game"));
-    if (routeIndex >= 0 && routeIndex + 1 < args.size()) {
-        bool ok = false;
-        const qint64 gameId = args.at(routeIndex + 1).toLongLong(&ok);
-        if (ok && gameId > 0)
-            window.setStartupGameId(gameId);
-    }
+    auto dispatchRoute = [&window](const QString &route) {
+        if (route.startsWith(QStringLiteral("launch:"))) {
+            bool ok = false;
+            const qint64 gameId = route.mid(7).toLongLong(&ok);
+            if (ok && gameId > 0)
+                window.setStartupGameId(gameId);
+        } else if (route.startsWith(QStringLiteral("uri:"))) {
+            window.handleProtocolUrl(route.mid(4));
+        }
+        window.showNormal();
+        window.raise();
+        window.activateWindow();
+    };
 
-    if (!args.contains(QStringLiteral("--no-updater"))) {
+    connect(&routeServer, &QLocalServer::newConnection, &app, [&routeServer, dispatchRoute] {
+        while (QLocalSocket *socket = routeServer.nextPendingConnection()) {
+            QObject::connect(socket, &QLocalSocket::readyRead, socket, [socket, dispatchRoute] {
+                dispatchRoute(QString::fromUtf8(socket->readAll()).trimmed());
+                socket->disconnectFromServer();
+            });
+        }
+    });
+
+    if (initialRoute.startsWith(QStringLiteral("launch:")) || initialRoute.startsWith(QStringLiteral("uri:")))
+        QTimer::singleShot(0, &app, [dispatchRoute, initialRoute] { dispatchRoute(initialRoute); });
+
+    if (!app.arguments().contains(QStringLiteral("--no-updater"))) {
         const QString updater = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("IrAutoXUpdater.exe"));
         if (QFile::exists(updater))
-            QTimer::singleShot(1800, &app, [updater] { QProcess::startDetached(updater, {QStringLiteral("--background")}); });
+            QTimer::singleShot(120, &app, [updater] { QProcess::startDetached(updater, {QStringLiteral("--background"), QStringLiteral("--fast-check")}); });
     }
 
     return app.exec();
