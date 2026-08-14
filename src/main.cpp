@@ -1,4 +1,5 @@
 #include "ui/MainWindow.h"
+#include "../resources/VazirEmbedded.h"
 
 #include <QApplication>
 #include <QCoreApplication>
