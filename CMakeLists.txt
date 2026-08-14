@@ -1,7 +1,14 @@
 cmake_minimum_required(VERSION 3.24)
 
+set(IRAUTOX_VERSION_OVERRIDE "" CACHE STRING "Override launcher version, e.g. from a release tag")
+if(IRAUTOX_VERSION_OVERRIDE)
+    set(_irautox_project_version "${IRAUTOX_VERSION_OVERRIDE}")
+else()
+    set(_irautox_project_version "2.0.0")
+endif()
+
 project(IrAutoXLauncher
-    VERSION 2.0.0
+    VERSION ${_irautox_project_version}
     DESCRIPTION "Native IrAutoX game launcher"
     LANGUAGES CXX
 )
@@ -40,6 +47,12 @@ set(IRAUTOX_SOURCES
     src/core/ProtocolClient.h
     src/core/SecureStore.cpp
     src/core/SecureStore.h
+    src/core/ShortcutSync.cpp
+    src/core/ShortcutSync.h
+    src/core/SingleInstance.cpp
+    src/core/SingleInstance.h
+    src/ui/LauncherChrome.cpp
+    src/ui/LauncherChrome.h
     src/ui/LoginDialog.cpp
     src/ui/LoginDialog.h
     src/ui/MainWindow.cpp
@@ -52,13 +65,20 @@ if(WIN32)
 endif()
 
 qt_add_executable(IrAutoXLauncher WIN32 ${IRAUTOX_SOURCES})
-
-target_include_directories(IrAutoXLauncher PRIVATE src)
-target_compile_definitions(IrAutoXLauncher PRIVATE
-    QT_NO_CAST_FROM_ASCII
-    QT_NO_CAST_TO_ASCII
-    IRAUTOX_VERSION="${PROJECT_VERSION}"
+qt_add_executable(IrAutoXUpdater WIN32
+    src/updater/main.cpp
+    resources/resources.qrc
 )
+
+foreach(target IrAutoXLauncher IrAutoXUpdater)
+    target_include_directories(${target} PRIVATE src)
+    target_compile_definitions(${target} PRIVATE
+        QT_NO_CAST_FROM_ASCII
+        QT_NO_CAST_TO_ASCII
+        IRAUTOX_VERSION="${PROJECT_VERSION}"
+    )
+endforeach()
+
 target_link_libraries(IrAutoXLauncher PRIVATE
     Qt6::Core
     Qt6::Gui
@@ -68,20 +88,29 @@ target_link_libraries(IrAutoXLauncher PRIVATE
     Qt6::Concurrent
 )
 
+target_link_libraries(IrAutoXUpdater PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::Network
+)
+
 if(MSVC)
-    target_compile_options(IrAutoXLauncher PRIVATE /W4 /permissive- /utf-8 /EHsc)
-    # The application manifest is already embedded by resources/windows.rc.in.
-    # Disable the linker's generated manifest to avoid duplicate RT_MANIFEST id 1.
-    target_link_options(IrAutoXLauncher PRIVATE /SUBSYSTEM:WINDOWS /MANIFEST:NO)
+    foreach(target IrAutoXLauncher IrAutoXUpdater)
+        target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8 /EHsc)
+        target_link_options(${target} PRIVATE /SUBSYSTEM:WINDOWS /MANIFEST:NO)
+    endforeach()
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(IrAutoXLauncher PRIVATE -Wall -Wextra -Wpedantic)
+    foreach(target IrAutoXLauncher IrAutoXUpdater)
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+    endforeach()
 endif()
 
 if(WIN32)
-    target_link_libraries(IrAutoXLauncher PRIVATE crypt32 dwmapi shell32)
+    target_link_libraries(IrAutoXLauncher PRIVATE crypt32 shell32 ole32)
 endif()
 
-install(TARGETS IrAutoXLauncher RUNTIME DESTINATION .)
+install(TARGETS IrAutoXLauncher IrAutoXUpdater RUNTIME DESTINATION .)
 
 if(IRAUTOX_BUILD_TESTS)
     enable_testing()
