@@ -4,6 +4,15 @@
 #include <QStandardPaths>
 
 namespace irautox {
+namespace {
+// Production endpoint is intentionally not exposed in the settings UI. Obfuscation is not treated as a security boundary.
+QString productionHost()
+{
+    static const ushort chars[] = {0x0069,0x0072,0x0061,0x0075,0x0074,0x006f,0x0078,0x002e,0x0069,0x0072};
+    return QString::fromUtf16(chars, static_cast<qsizetype>(std::size(chars)));
+}
+constexpr quint16 kProductionPort = 6768;
+}
 
 AppSettings::AppSettings()
     : m_settings(QStringLiteral("IrAutoX"), QStringLiteral("Launcher"))
@@ -12,12 +21,12 @@ AppSettings::AppSettings()
 
 QString AppSettings::serverHost() const
 {
-    return m_settings.value(QStringLiteral("network/host"), QStringLiteral("irautox.ir")).toString();
+    return productionHost();
 }
 
 quint16 AppSettings::serverPort() const
 {
-    return static_cast<quint16>(m_settings.value(QStringLiteral("network/port"), 6768).toUInt());
+    return kProductionPort;
 }
 
 QString AppSettings::downloadRoot() const
@@ -50,10 +59,10 @@ bool AppSettings::launchOnStartup() const
 
 void AppSettings::setServer(QString host, quint16 port)
 {
-    host = host.trimmed();
-    if (!host.isEmpty())
-        m_settings.setValue(QStringLiteral("network/host"), host);
-    m_settings.setValue(QStringLiteral("network/port"), port);
+    Q_UNUSED(host)
+    Q_UNUSED(port)
+    m_settings.remove(QStringLiteral("network/host"));
+    m_settings.remove(QStringLiteral("network/port"));
 }
 
 void AppSettings::setDownloadRoot(const QString &path)
