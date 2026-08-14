@@ -29,7 +29,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName=IrAutoX Launcher
 CloseApplications=yes
-RestartApplications=no
+RestartApplications=yes
 SetupLogging=yes
 VersionInfoVersion={#Version}.0
 VersionInfoCompany=IrAutoX
@@ -57,4 +57,4 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\IrAutoXUpdater.exe"; Parameters: "--background"; Flags: nowait runhidden
-Filename: "{app}\IrAutoXLauncher.exe"; Description: "Launch IrAutoX"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\IrAutoXLauncher.exe"; Description: "Launch IrAutoX"; Flags: nowait postinstall
