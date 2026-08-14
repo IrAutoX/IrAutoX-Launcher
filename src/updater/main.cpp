@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -253,7 +254,7 @@ Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $Zip -Force -ErrorAction SilentlyContinue
 Start-Process -FilePath $Launcher
 )PS";
-        script.write(scriptText);
+        script.write(QByteArray(scriptText));
         if (!script.commit()) {
             QMessageBox::warning(nullptr, tr("بروزرسانی"), tr("ذخیره اسکریپت بروزرسانی ناموفق بود."));
             return;
@@ -304,7 +305,7 @@ int main(int argc, char *argv[])
     const QString lockPath = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
         .filePath(QStringLiteral("IrAutoXUpdater.lock"));
     QLockFile lock(lockPath);
-    lock.setStaleLockTime(0);
+    lock.setStaleLockTime(30000);
     if (!lock.tryLock(100))
         return 0;
 
