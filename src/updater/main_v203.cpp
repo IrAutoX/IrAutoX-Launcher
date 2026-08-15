@@ -219,7 +219,7 @@ bool launchSetupDelayedElevated(const QString &setupPath, QString *error)
     }
 
     const QString nativeSetup = QDir::toNativeSeparators(QFileInfo(setupPath).absoluteFilePath());
-    const QString script = QStringLiteral(
+    QString script = QStringLiteral(
         "$p=%1; Start-Sleep -Milliseconds 900; "
         "$a=@('/SILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS','/FORCECLOSEAPPLICATIONS'); "
         "Start-Process -FilePath $p -ArgumentList $a -Wait")
