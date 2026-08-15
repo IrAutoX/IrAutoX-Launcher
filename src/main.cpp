@@ -18,6 +18,8 @@ constexpr auto kInstanceName = "IrAutoXLauncher.SingleInstance.v2";
 
 QString routeFromArguments(const QStringList &args)
 {
+    if (args.contains(QStringLiteral("--sdk-wake")) || args.contains(QStringLiteral("--background")))
+        return QStringLiteral("sdk-wake");
     const int routeIndex = args.indexOf(QStringLiteral("--launch-game"));
     if (routeIndex >= 0 && routeIndex + 1 < args.size())
         return QStringLiteral("launch:%1").arg(args.at(routeIndex + 1));
