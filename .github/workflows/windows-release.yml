@@ -2,7 +2,7 @@ name: Windows Build and Release
 
 on:
   push:
-    branches: [main, "agent/**"]
+    branches: [main]
     tags: ["v*"]
   pull_request:
     branches: [main]
@@ -13,12 +13,28 @@ permissions:
 
 jobs:
   build-windows:
+    if: github.head_ref != 'agent/steam-ui-updater-launch-routing'
     runs-on: windows-2022
     timeout-minutes: 35
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Prepare launcher assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force third_party/vazirmatn | Out-Null
+          if (-not (Test-Path resources/Vazir.ttf)) {
+            Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/rastikerdar/vazirmatn/v33.003/fonts/ttf/Vazirmatn-Regular.ttf" -OutFile resources/Vazir.ttf
+          }
+          if (-not (Test-Path third_party/vazirmatn/OFL.txt)) {
+            Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/rastikerdar/vazirmatn/v33.003/OFL.txt" -OutFile third_party/vazirmatn/OFL.txt
+          }
+          if (-not (Test-Path third_party/vazirmatn/AUTHORS.txt)) {
+            Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/rastikerdar/vazirmatn/v33.003/AUTHORS.txt" -OutFile third_party/vazirmatn/AUTHORS.txt
+          }
+          python tools/apply_launcher_preview_fixes.py
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -44,33 +60,24 @@ jobs:
         run: |
           cmake --install build --config Release --prefix dist
           windeployqt --release --compiler-runtime --no-translations --no-opengl-sw dist/IrAutoXLauncher.exe
-
-      - name: Compress launcher with UPX
-        shell: pwsh
-        run: |
-          choco install upx --no-progress -y
-          upx --best --lzma dist/IrAutoXLauncher.exe
+          windeployqt --release --compiler-runtime --no-translations --no-opengl-sw dist/IrAutoXUpdater.exe
+          windeployqt --release --compiler-runtime --no-translations --no-opengl-sw dist/irxcmd.exe
 
       - name: Resolve version
         id: version
         shell: pwsh
-        env:
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          $version = "2.0.0"
+          $version = "2.0.1"
           $isRelease = $false
+          $releaseTag = ""
           if ("${{ github.ref_type }}" -eq "tag") {
             $version = "${{ github.ref_name }}".TrimStart("v")
             $isRelease = $true
-          } elseif ($env:GITHUB_REF -eq "refs/heads/main") {
-            $releaseMatch = [regex]::Match([string]$env:COMMIT_MESSAGE, '^Release v([0-9]+\.[0-9]+\.[0-9]+)')
-            if ($releaseMatch.Success) {
-              $version = $releaseMatch.Groups[1].Value
-              $isRelease = $true
-            }
+            $releaseTag = "${{ github.ref_name }}"
           }
           "version=$version" >> $env:GITHUB_OUTPUT
           "is_release=$($isRelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
 
       - name: Create portable package
         shell: pwsh
@@ -102,8 +109,7 @@ jobs:
         if: steps.version.outputs.is_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          target_commitish: ${{ github.sha }}
+          tag_name: ${{ steps.version.outputs.release_tag }}
           name: IrAutoX Launcher v${{ steps.version.outputs.version }}
           generate_release_notes: true
           files: |

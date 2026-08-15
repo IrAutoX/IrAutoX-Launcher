@@ -2,6 +2,20 @@
   <qresource prefix="/">
     <file>logo.svg</file>
     <file>theme.qss</file>
+    <file>Vazir.ttf</file>
+    <file>icons/minimize.svg</file>
+    <file>icons/maximize.svg</file>
+    <file>icons/close.svg</file>
+    <file>icons/store.svg</file>
+    <file>icons/library.svg</file>
+    <file>icons/download.svg</file>
+    <file>icons/friends.svg</file>
+    <file>icons/profile.svg</file>
+    <file>icons/settings.svg</file>
+    <file>icons/admin.svg</file>
+    <file>icons/play.svg</file>
+    <file>icons/more.svg</file>
+    <file>icons/refresh.svg</file>
+    <file>icons/back.svg</file>
   </qresource>
 </RCC>
-

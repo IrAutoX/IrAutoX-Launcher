@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#171a21">
+  <title>IrAutoX</title>
+  <link rel="icon" href="../resources/logo.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#home"><img src="../resources/logo.svg" alt="IrAutoX"><span>IrAutoX</span></a>
+    <nav>
+      <a href="#home">خانه</a>
+      <a href="#store">فروشگاه</a>
+      <a href="#library">کتابخانه</a>
+      <a href="#account">حساب</a>
+    </nav>
+    <a class="button compact" href="https://irautox.ir/version/IrAutoX-Launcher-v2.0.2-Setup.exe">دانلود لانچر</a>
+  </header>
+
+  <main>
+    <section id="home" class="hero panel-section">
+      <div class="hero-copy">
+        <div class="eyebrow">IRAUTOX / PLAY YOUR WAY</div>
+        <h1>فروشگاه، کتابخانه و بازی‌ها؛ یک‌جا.</h1>
+        <p>بازی‌ها را از وب پیدا کن، حساب خودت را مدیریت کن و برای نصب و اجرا مستقیم وارد IrAutoX Launcher شو.</p>
+        <div class="actions">
+          <a class="button primary" href="#store">دیدن فروشگاه</a>
+          <a class="button" href="https://irautox.ir/version/IrAutoX-Launcher-v2.0.2-Setup.exe">دریافت نسخه 2.0.2</a>
+        </div>
+      </div>
+      <div class="hero-card">
+        <img src="../resources/logo.svg" alt="IrAutoX">
+        <strong>IrAutoX Launcher 2.0.2</strong>
+        <span>Windows x64</span>
+        <span>Store · Library · Presence · SDK</span>
+      </div>
+    </section>
+
+    <section id="store" class="panel-section">
+      <div class="section-head"><div><span class="eyebrow">STORE</span><h2>فروشگاه</h2></div><button id="refreshGames" class="button">تازه‌سازی</button></div>
+      <div id="storeMessage" class="message"></div>
+      <div id="games" class="game-grid"></div>
+    </section>
+
+    <section id="library" class="panel-section split">
+      <div>
+        <span class="eyebrow">LIBRARY</span>
+        <h2>کتابخانه در لانچر</h2>
+        <p>نسخه وب برای کشف بازی و مدیریت حساب است. نصب، بروزرسانی و اجرای امن بازی‌ها در IrAutoX Launcher انجام می‌شود.</p>
+      </div>
+      <div class="glass-card">
+        <h3>برای Play به برنامه نیاز داری</h3>
+        <p>دکمه Play اول پروتکل <code>irautox://</code> را امتحان می‌کند. اگر لانچر نصب نباشد، دانلود نسخه ویندوز نمایش داده می‌شود.</p>
+        <a class="button primary" href="https://irautox.ir/version/IrAutoX-Launcher-v2.0.2-Setup.exe">نصب IrAutoX</a>
+      </div>
+    </section>
+
+    <section id="account" class="panel-section account-grid">
+      <div>
+        <span class="eyebrow">ACCOUNT</span>
+        <h2>حساب IrAutoX</h2>
+        <p>این فرم به HTTP API سایت وصل می‌شود و اطلاعات ورود را داخل URL قرار نمی‌دهد.</p>
+      </div>
+      <form id="loginForm" class="glass-card">
+        <label>نام کاربری<input id="username" autocomplete="username" required minlength="3"></label>
+        <label>رمز عبور<input id="password" type="password" autocomplete="current-password" required minlength="4"></label>
+        <button class="button primary" type="submit">ورود</button>
+        <div id="accountMessage" class="message"></div>
+      </form>
+    </section>
+  </main>
+
+  <div id="launcherPrompt" class="launcher-prompt" hidden>
+    <div><strong>لانچر باز نشد؟</strong><span>برای نصب و اجرای بازی IrAutoX Launcher را نصب کن.</span></div>
+    <a class="button primary" href="https://irautox.ir/version/IrAutoX-Launcher-v2.0.2-Setup.exe">دانلود لانچر</a>
+    <button id="closePrompt" class="icon-button" aria-label="بستن">×</button>
+  </div>
+
+  <footer><span>IrAutoX 2.0.2</span><span>DeathAmir And IrAutoX</span></footer>
+  <script src="app.js"></script>
+</body>
+</html>

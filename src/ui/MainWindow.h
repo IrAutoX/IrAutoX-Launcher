@@ -8,6 +8,9 @@
 #include <QHash>
 #include <QJsonObject>
 #include <QMainWindow>
+#include <QPoint>
+#include <QSet>
+#include <QSize>
 
 class QButtonGroup;
 class QCheckBox;
@@ -19,8 +22,11 @@ class QGridLayout;
 class QLabel;
 class QLineEdit;
 class QListWidget;
+class QMouseEvent;
+class QNetworkAccessManager;
 class QPlainTextEdit;
 class QProgressBar;
+class QProcess;
 class QPushButton;
 class QScrollArea;
 class QSpinBox;
@@ -34,16 +40,23 @@ class QJsonValue;
 namespace irautox {
 
 class LoginDialog;
+class PresenceMonitor;
+class SdkBridge;
 
 class MainWindow final : public QMainWindow {
     Q_OBJECT
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
+    void setStartupGameId(qint64 gameId);
+    void handleProtocolUrl(const QString &url);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
     void changeEvent(QEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
 
 private slots:
     void onServerMessage(const QJsonObject &message);
@@ -68,6 +81,7 @@ private:
     QWidget *createSettingsPage();
     QWidget *createAdminPage();
     QWidget *createDetailPage();
+    QFrame *createWindowBar(QWidget *parent);
     void setupTray();
     void showLogin();
     void setCurrentPage(Page page);
@@ -85,6 +99,7 @@ private:
     void launchGame(qint64 gameId);
     void uninstallGame(qint64 gameId);
     void openInstallDirectory(qint64 gameId);
+    void createDesktopShortcut(qint64 gameId);
     void saveSettings();
     void applyStartupSetting(bool enabled);
     void logout();
@@ -95,6 +110,12 @@ private:
     void clearAdminForm();
     void writeInstallMarker(const DownloadRequest &request) const;
     bool hasValidInstallMarker(const InstalledGame &game) const;
+    bool gameSessionActive() const;
+    void applyGameIcon(QLabel *label, const QJsonObject &game, const QSize &size, bool circular = false);
+    void publishPresence(qint64 gameId, bool playing, qint64 elapsedSeconds, const QString &details, const QString &state, int partySize, int partyMax, const QString &source);
+    void precacheGameAssets(const QJsonObject &game);
+    void applyGameAsset(QLabel *label, const QJsonObject &game, const QSize &size, bool banner, bool circular);
+    void applyGameBanner(QLabel *label, const QJsonObject &game, const QSize &size);
 
     static qint64 jsonId(const QJsonValue &value);
     static QString safeFolderName(const QString &name, qint64 id);
@@ -109,12 +130,19 @@ private:
     QString m_sessionPassword;
     bool m_rememberSession = false;
     bool m_quitting = false;
+    bool m_draggingWindow = false;
+    QPoint m_dragOffset;
+    qint64 m_startupGameId = 0;
+    QString m_startupGameName;
 
     QHash<qint64, QJsonObject> m_games;
     QJsonObject m_currentGame;
     qint64 m_currentGameId = 0;
     qint64 m_pendingUpdateCheck = 0;
     QHash<qint64, QFrame *> m_downloadRows;
+    QHash<qint64, QProcess *> m_activeGameProcesses;
+    QSet<QString> m_assetRefreshStarted;
+    QSet<qint64> m_requestedDetailAssets;
 
     QStackedWidget *m_pages = nullptr;
     QButtonGroup *m_navigation = nullptr;
@@ -126,10 +154,13 @@ private:
     QPushButton *m_adminNavButton = nullptr;
     QSystemTrayIcon *m_tray = nullptr;
     QTimer *m_announcementTimer = nullptr;
+    QNetworkAccessManager *m_assetNetwork = nullptr;
+    PresenceMonitor *m_presenceMonitor = nullptr;
+    SdkBridge *m_sdkBridge = nullptr;
 
     QGridLayout *m_storeGrid = nullptr;
     QVBoxLayout *m_libraryLayout = nullptr;
-    QVBoxLayout *m_downloadsLayout = nullptr;
+    QGridLayout *m_downloadsGrid = nullptr;
     QVBoxLayout *m_friendsLayout = nullptr;
     QVBoxLayout *m_requestsLayout = nullptr;
     QLabel *m_globalDownloadLabel = nullptr;
@@ -153,8 +184,6 @@ private:
 
     QLineEdit *m_friendUsername = nullptr;
     QLineEdit *m_downloadPath = nullptr;
-    QLineEdit *m_serverHost = nullptr;
-    QSpinBox *m_serverPort = nullptr;
     QCheckBox *m_minimizeToTray = nullptr;
     QCheckBox *m_closeToTray = nullptr;
     QCheckBox *m_startWithWindows = nullptr;

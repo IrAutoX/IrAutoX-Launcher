@@ -1,5 +1,7 @@
 #include "ui/LoginDialog.h"
 
+#include "ui/WindowChrome.h"
+
 #include <QCheckBox>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -18,14 +20,21 @@ LoginDialog::LoginDialog(QWidget *parent)
     setWindowTitle(tr("ورود به IrAutoX"));
     setWindowIcon(QIcon(QStringLiteral(":/logo.svg")));
     setModal(false);
-    setMinimumSize(900, 560);
-    resize(980, 620);
+    setMinimumSize(900, 600);
+    resize(980, 660);
+    WindowChrome::makeFrameless(this);
 
-    auto *root = new QHBoxLayout(this);
+    auto *outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 0);
+    outer->setSpacing(0);
+    outer->addWidget(WindowChrome::createTitleBar(this, tr("ورود به IrAutoX"), true));
+
+    auto *body = new QWidget(this);
+    auto *root = new QHBoxLayout(body);
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(0);
 
-    auto *visual = new QFrame(this);
+    auto *visual = new QFrame(body);
     visual->setStyleSheet(QStringLiteral(
         "QFrame { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #131a25,stop:0.55 #181820,stop:1 #3a1c0f); }"));
     auto *visualLayout = new QVBoxLayout(visual);
@@ -49,7 +58,7 @@ LoginDialog::LoginDialog(QWidget *parent)
     visualLayout->addWidget(copy);
     visualLayout->addStretch();
 
-    auto *formHost = new QFrame(this);
+    auto *formHost = new QFrame(body);
     auto *form = new QVBoxLayout(formHost);
     form->setContentsMargins(64, 54, 64, 54);
     auto *title = new QLabel(tr("خوش آمدید"), formHost);
@@ -69,9 +78,9 @@ LoginDialog::LoginDialog(QWidget *parent)
     m_password->setClearButtonEnabled(true);
     m_remember = new QCheckBox(tr("ورود من را با رمزگذاری ویندوز حفظ کن"), formHost);
     m_remember->setChecked(true);
-    m_login = new QPushButton(tr("ورود به لانچر"), formHost);
+    m_login = new QPushButton(QIcon(QStringLiteral(":/logo.svg")), tr("ورود به لانچر"), formHost);
     m_login->setObjectName(QStringLiteral("primary"));
-    m_register = new QPushButton(tr("ساخت حساب جدید"), formHost);
+    m_register = new QPushButton(QIcon(QStringLiteral(":/logo.svg")), tr("ساخت حساب جدید"), formHost);
 
     form->addWidget(title);
     form->addWidget(subtitle);
@@ -88,6 +97,7 @@ LoginDialog::LoginDialog(QWidget *parent)
 
     root->addWidget(visual, 11);
     root->addWidget(formHost, 9);
+    outer->addWidget(body, 1);
 
     connect(m_login, &QPushButton::clicked, this, [this] { submit(false); });
     connect(m_register, &QPushButton::clicked, this, [this] { submit(true); });
@@ -146,5 +156,4 @@ void LoginDialog::submit(bool registration)
         emit loginRequested(username(), password(), rememberCredentials());
 }
 
-} // namespace irautox
-
+}

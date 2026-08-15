@@ -28,7 +28,7 @@ struct DownloadRequest {
 class DownloadManager final : public QObject {
     Q_OBJECT
 public:
-    enum class State { Queued, Downloading, Paused, Verifying, Installing, Completed, Failed, Cancelled };
+    enum class State { Queued, Probing, Downloading, Paused, Verifying, Installing, Completed, Failed, Cancelled };
     Q_ENUM(State)
 
     explicit DownloadManager(QObject *parent = nullptr);
@@ -54,16 +54,24 @@ private slots:
     void onExtractionFinished();
 
 private:
+    void probeResumeSupport();
     void startDownload(bool resume);
     void cleanupReply();
+    void cleanupProbe();
     void fail(const QString &message);
+    void retryFromZero(const QString &reason, bool countRetry = true);
+    void removePartial();
+    bool partialMatchesRequest() const;
+    void writePartialMetadata() const;
     QString partPathFor(qint64 gameId) const;
+    QString partMetaPathFor(qint64 gameId) const;
     bool verifyArchive(QString *error) const;
 
     QNetworkAccessManager m_network;
     QQueue<DownloadRequest> m_queue;
     DownloadRequest m_current;
     QNetworkReply *m_reply = nullptr;
+    QNetworkReply *m_probeReply = nullptr;
     QFile m_output;
     QElapsedTimer m_speedTimer;
     QFutureWatcher<ArchiveResult> m_extractionWatcher;
@@ -72,7 +80,11 @@ private:
     bool m_hasCurrent = false;
     bool m_pausing = false;
     bool m_cancelling = false;
-    bool m_resumeChecked = false;
+    bool m_responseChecked = false;
+    bool m_requestWasRange = false;
+    bool m_restartFromZeroPending = false;
+    int m_fullRetryCount = 0;
+    int m_integrityRetryCount = 0;
     State m_state = State::Queued;
 };
 
@@ -80,4 +92,3 @@ private:
 
 Q_DECLARE_METATYPE(irautox::DownloadRequest)
 Q_DECLARE_METATYPE(irautox::DownloadManager::State)
-
