@@ -67,8 +67,10 @@ jobs:
         shell: pwsh
         run: |
           node --check website/app.js
+          python -m py_compile website/server.py
           python -m json.tool website/games.json | Out-Null
           if (-not (Test-Path website/index.html)) { throw "website/index.html missing" }
+          if (-not (Test-Path website/requirements.txt)) { throw "website/requirements.txt missing" }
 
       - name: Deploy Qt runtime
         shell: pwsh
