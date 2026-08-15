@@ -1,7 +1,9 @@
 #pragma once
 
 #include <QHash>
+#include <QJsonObject>
 #include <QObject>
+#include <QString>
 #include <QTcpServer>
 
 class QTcpSocket;
