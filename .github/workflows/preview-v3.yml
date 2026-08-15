@@ -1,4 +1,4 @@
-name: Preview Updater V4 Build
+name: IrAutoX 2.0.2 Preview Build
 
 on:
   push:
@@ -9,20 +9,21 @@ permissions:
   contents: write
 
 jobs:
-  preview-v4:
+  preview-v202:
     runs-on: windows-2022
-    timeout-minutes: 35
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Generate icon and finalize launcher sources
+      - name: Finalize launcher 2.0.2 sources
         shell: pwsh
         run: |
           magick resources/logo.svg -background none -define icon:auto-resize=256,128,64,48,32,24,16 resources/app.ico
           python tools/apply_launcher_preview_fixes.py
           python tools/finalize_preview_v3.py
+          python tools/apply_v202.py
 
       - name: Commit generated launcher sources
         shell: pwsh
@@ -32,7 +33,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add resources/app.ico resources/resources.qrc resources/theme.qss src/ui/MainWindow.cpp src/ui/MainWindow.h
-            git commit -m "Finalize persistent game icon cache [skip ci]"
+            git commit -m "Finalize IrAutoX 2.0.2 launcher integration [skip ci]"
             git push origin HEAD:agent/steam-ui-updater-launch-routing
           }
 
@@ -57,9 +58,16 @@ jobs:
         shell: pwsh
         run: cmake --build build --config Release --parallel
 
-      - name: Test
+      - name: Test launcher and SDK
         shell: pwsh
         run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Validate website
+        shell: pwsh
+        run: |
+          node --check website/app.js
+          python -m json.tool website/games.json | Out-Null
+          if (-not (Test-Path website/index.html)) { throw "website/index.html missing" }
 
       - name: Deploy Qt runtime
         shell: pwsh
@@ -81,21 +89,59 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force release | Out-Null
-          Compress-Archive -Path dist/* -DestinationPath "release/IrAutoX-Launcher-v2.0.1-Portable.zip" -CompressionLevel Optimal
+          Compress-Archive -Path dist/* -DestinationPath "release/IrAutoX-Launcher-v2.0.2-Portable.zip" -CompressionLevel Optimal
+
+      - name: Package C++ SDK
+        shell: pwsh
+        run: |
+          $sdk = "release/sdk-package"
+          New-Item -ItemType Directory -Force "$sdk/include", "$sdk/bin", "$sdk/lib", "$sdk/examples" | Out-Null
+          Copy-Item sdk/include/IrAutoXSDK.h "$sdk/include/IrAutoXSDK.h"
+          Copy-Item sdk/README.md "$sdk/README.md"
+          Copy-Item sdk/examples/DemoGame/main.cpp "$sdk/examples/main.cpp"
+          Copy-Item build/Release/IrAutoXSDK.dll "$sdk/bin/IrAutoXSDK.dll"
+          Copy-Item build/Release/IrAutoXSDK.lib "$sdk/lib/IrAutoXSDK.lib"
+          Copy-Item build/Release/IrAutoXSDK_static.lib "$sdk/lib/IrAutoXSDK_static.lib"
+          Compress-Archive -Path "$sdk/*" -DestinationPath "release/IrAutoXSDK-v2.0.2.zip" -CompressionLevel Optimal
+          Remove-Item $sdk -Recurse -Force
+
+      - name: Package website
+        shell: pwsh
+        run: |
+          $site = "release/site-package"
+          New-Item -ItemType Directory -Force "$site/website", "$site/resources" | Out-Null
+          Copy-Item website/* "$site/website" -Recurse
+          Copy-Item resources/Vazir.ttf "$site/resources/Vazir.ttf"
+          Copy-Item resources/logo.svg "$site/resources/logo.svg"
+          Compress-Archive -Path "$site/*" -DestinationPath "release/IrAutoX-Website-v2.0.2.zip" -CompressionLevel Optimal
+          Remove-Item $site -Recurse -Force
 
       - name: Build installer
         shell: pwsh
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DSourceDir=$pwd\dist" "/DOutputDir=$pwd\release" "/DVersion=2.0.1" packaging/IrAutoXLauncher.iss
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DSourceDir=$pwd\dist" "/DOutputDir=$pwd\release" "/DVersion=2.0.2" packaging/IrAutoXLauncher.iss
+
+      - name: Generate SHA256 list
+        shell: pwsh
+        run: |
+          $lines = Get-ChildItem release -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          }
+          $lines | Set-Content release/SHA256SUMS.txt -Encoding ascii
+          Get-Content release/SHA256SUMS.txt
 
       - name: Publish preview release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: preview-updater-v4-${{ github.run_number }}
+          tag_name: preview-v202-${{ github.run_number }}
           target_commitish: ${{ steps.meta.outputs.sha }}
-          name: IrAutoX Launcher 2.0.1 Updater Preview
+          name: IrAutoX Launcher 2.0.2 Preview
           prerelease: true
           generate_release_notes: true
           files: |
-            release/*-Portable.zip
-            release/*-Setup.exe
+            release/IrAutoX-Launcher-v2.0.2-Portable.zip
+            release/IrAutoX-Launcher-v2.0.2-Setup.exe
+            release/IrAutoXSDK-v2.0.2.zip
+            release/IrAutoX-Website-v2.0.2.zip
+            release/SHA256SUMS.txt
