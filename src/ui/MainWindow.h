@@ -9,6 +9,7 @@
 #include <QJsonObject>
 #include <QMainWindow>
 #include <QPoint>
+#include <QSet>
 #include <QSize>
 
 class QButtonGroup;
@@ -140,6 +141,8 @@ private:
     qint64 m_pendingUpdateCheck = 0;
     QHash<qint64, QFrame *> m_downloadRows;
     QHash<qint64, QProcess *> m_activeGameProcesses;
+    QSet<QString> m_assetRefreshStarted;
+    QSet<qint64> m_requestedDetailAssets;
 
     QStackedWidget *m_pages = nullptr;
     QButtonGroup *m_navigation = nullptr;
