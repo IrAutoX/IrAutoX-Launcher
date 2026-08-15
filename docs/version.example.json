@@ -1,23 +1,24 @@
 {
   "schema": 1,
   "channel": "stable",
-  "version": "2.0.1",
-  "title": "IrAutoX Launcher 2.0.1",
-  "published_at": "2026-08-14T00:00:00Z",
+  "version": "2.0.2",
+  "title": "IrAutoX Launcher 2.0.2",
+  "published_at": "2026-08-15T00:00:00Z",
   "mandatory": false,
   "changelog": [
-    "بهبود سرعت اجرای فرمان‌های irxcmd و irautox://",
-    "بهبود نمایش آیکون واقعی بازی‌ها در فروشگاه و دانلودها",
-    "بهبود پایداری Updater و بررسی SHA-256 قبل از نصب",
-    "بهبود رابط کاربری و دانلودهای چندکارتی"
+    "یکپارچه‌سازی فونت و پنجره‌های اختصاصی Launcher و Updater",
+    "کش دائمی آیکون و بنر بازی‌ها در Store و Library",
+    "تشخیص اجرای بازی از Launcher، CMD، Explorer و Shortcut",
+    "اضافه شدن IrAutoX C++ SDK و Local SDK Bridge",
+    "اضافه شدن وب‌سایت رسمی و بسته‌های SDK و Website به Release"
   ],
   "installer": {
-    "url": "https://irautox.ir/version/IrAutoX-Launcher-v2.0.1-Setup.exe",
+    "url": "https://irautox.ir/version/IrAutoX-Launcher-v2.0.2-Setup.exe",
     "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
     "size": 0
   },
   "portable": {
-    "url": "https://irautox.ir/version/IrAutoX-Launcher-v2.0.1-Portable.zip",
+    "url": "https://irautox.ir/version/IrAutoX-Launcher-v2.0.2-Portable.zip",
     "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
     "size": 0
   }
