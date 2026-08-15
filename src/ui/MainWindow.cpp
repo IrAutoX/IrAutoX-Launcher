@@ -989,6 +989,7 @@ void MainWindow::setupTray()
     menu->setFont(qApp->font());
     menu->setFont(qApp->font());
     menu->setFont(qApp->font());
+    menu->setFont(qApp->font());
     auto *showAction = menu->addAction(tr("نمایش لانچر"));
     auto *downloadsAction = menu->addAction(tr("دانلودها"));
     menu->addSeparator();
