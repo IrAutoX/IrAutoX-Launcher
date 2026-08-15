@@ -4,6 +4,21 @@ ROOT = Path(__file__).resolve().parents[1]
 path = ROOT / "src/ui/MainWindow.cpp"
 cpp = path.read_text(encoding="utf-8")
 
+# Generated MainWindow.cpp is committed back to the branch by Actions. On a later
+# run apply_v202.py replaces applyGameIcon again, while the previously generated
+# applyGameAsset block may still be present before it. Keep only the newest block.
+signature = "void MainWindow::applyGameAsset(QLabel *label, const QJsonObject &game, const QSize &size, bool banner, bool circular)"
+positions = []
+start = 0
+while True:
+    index = cpp.find(signature, start)
+    if index < 0:
+        break
+    positions.append(index)
+    start = index + len(signature)
+if len(positions) > 1:
+    cpp = cpp[:positions[0]] + cpp[positions[-1]:]
+
 old = '''            if (id > 0)
                 m_games.insert(id, game);
 '''
