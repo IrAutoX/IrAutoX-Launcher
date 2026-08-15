@@ -37,13 +37,29 @@ bool forwardToExistingInstance(const QString &route)
 {
     QLocalSocket socket;
     socket.connectToServer(QString::fromLatin1(kInstanceName), QIODevice::WriteOnly);
-    if (!socket.waitForConnected(140))
+    if (!socket.waitForConnected(650))
         return false;
     socket.write(route.toUtf8());
     socket.flush();
-    socket.waitForBytesWritten(140);
+    if (!socket.waitForBytesWritten(650))
+        return false;
     socket.disconnectFromServer();
+    socket.waitForDisconnected(250);
     return true;
+}
+
+void startBackgroundUpdater()
+{
+    const QString updater = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("IrAutoXUpdater.exe"));
+    if (!QFile::exists(updater))
+        return;
+    const QString parentPid = QString::number(QCoreApplication::applicationPid());
+    QProcess::startDetached(updater, {
+        QStringLiteral("--background"),
+        QStringLiteral("--fast-check"),
+        QStringLiteral("--parent-pid"),
+        parentPid
+    });
 }
 }
 
@@ -66,8 +82,13 @@ int main(int argc, char *argv[])
 
     QLocalServer::removeServer(QString::fromLatin1(kInstanceName));
     QLocalServer routeServer;
-    if (!routeServer.listen(QString::fromLatin1(kInstanceName)))
-        return 2;
+    if (!routeServer.listen(QString::fromLatin1(kInstanceName))) {
+        if (forwardToExistingInstance(initialRoute))
+            return 0;
+        QLocalServer::removeServer(QString::fromLatin1(kInstanceName));
+        if (!routeServer.listen(QString::fromLatin1(kInstanceName)))
+            return 2;
+    }
 
     QFile style(QStringLiteral(":/theme.qss"));
     if (style.open(QIODevice::ReadOnly))
@@ -121,11 +142,8 @@ int main(int argc, char *argv[])
         });
     }
 
-    if (!app.arguments().contains(QStringLiteral("--no-updater"))) {
-        const QString updater = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("IrAutoXUpdater.exe"));
-        if (QFile::exists(updater))
-            QTimer::singleShot(100, &app, [updater] { QProcess::startDetached(updater, {QStringLiteral("--background"), QStringLiteral("--fast-check")}); });
-    }
+    if (!app.arguments().contains(QStringLiteral("--no-updater")))
+        QTimer::singleShot(1200, &app, [] { startBackgroundUpdater(); });
 
     return app.exec();
 }
