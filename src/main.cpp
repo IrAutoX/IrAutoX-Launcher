@@ -1,15 +1,14 @@
 #include "ui/MainWindow.h"
+#include "ui/StyledMessageBox.h"
+#include "ui/WindowChrome.h"
 
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
-#include <QFont>
-#include <QFontDatabase>
 #include <QIcon>
 #include <QLocalServer>
 #include <QLocalSocket>
-#include <QMessageBox>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTimer>
@@ -56,6 +55,8 @@ int main(int argc, char *argv[])
     QApplication::setQuitOnLastWindowClosed(true);
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/logo.svg")));
     QApplication::setLayoutDirection(Qt::RightToLeft);
+    irautox::WindowChrome::installBundledFont(app, 10);
+    app.setProperty("irautox.startHidden", app.arguments().contains(QStringLiteral("--sdk-wake")) || app.arguments().contains(QStringLiteral("--background")));
 
     const QString initialRoute = routeFromArguments(app.arguments());
     if (forwardToExistingInstance(initialRoute))
@@ -65,14 +66,6 @@ int main(int argc, char *argv[])
     QLocalServer routeServer;
     if (!routeServer.listen(QString::fromLatin1(kInstanceName)))
         return 2;
-
-    const int fontId = QFontDatabase::addApplicationFont(QStringLiteral(":/Vazir.ttf"));
-    if (fontId >= 0) {
-        const QStringList families = QFontDatabase::applicationFontFamilies(fontId);
-        app.setFont(QFont(families.isEmpty() ? QStringLiteral("Vazirmatn") : families.first(), 10));
-    } else {
-        app.setFont(QFont(QStringLiteral("Tahoma"), 10));
-    }
 
     QFile style(QStringLiteral(":/theme.qss"));
     if (style.open(QIODevice::ReadOnly))
@@ -94,9 +87,11 @@ int main(int argc, char *argv[])
         } else if (route.startsWith(QStringLiteral("uri:"))) {
             window.handleProtocolUrl(route.mid(4));
         }
-        window.showNormal();
-        window.raise();
-        window.activateWindow();
+        if (route != QStringLiteral("sdk-wake")) {
+            window.showNormal();
+            window.raise();
+            window.activateWindow();
+        }
     };
 
     QObject::connect(&routeServer, &QLocalServer::newConnection, &app, [&routeServer, dispatchRoute] {
@@ -118,9 +113,9 @@ int main(int argc, char *argv[])
         const QString version = QString::fromUtf8(marker.readAll()).trimmed();
         marker.close();
         QFile::remove(pendingUpdate);
-        QTimer::singleShot(1800, &window, [&window, version] {
-            QMessageBox::information(&window, QStringLiteral("IrAutoX"),
-                                     QStringLiteral("بروزرسانی %1 با موفقیت نصب شد. ممنون که IrAutoX را به‌روز نگه می‌دارید.").arg(version));
+        QTimer::singleShot(1500, &window, [&window, version] {
+            irautox::StyledMessageBox::information(&window, QStringLiteral("IrAutoX"),
+                                                   QStringLiteral("بروزرسانی %1 با موفقیت نصب شد. ممنون که IrAutoX را به‌روز نگه می‌دارید.").arg(version));
         });
     }
 
