@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QString>
 #include <QTimer>
 
 namespace irautox {
@@ -25,6 +26,7 @@ private:
     QTimer m_timer;
     qint64 m_activeGameId = 0;
     qint64 m_startedAt = 0;
+    qint64 m_lastHeartbeatAt = 0;
 };
 
 }
