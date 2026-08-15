@@ -10,6 +10,7 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory, session
 
 ROOT = Path(__file__).resolve().parent
+RESOURCES_ROOT = ROOT.parent / "resources"
 IRAUTOX_HOST = os.environ.get("IRAUTOX_HOST", "irautox.ir")
 IRAUTOX_PORT = int(os.environ.get("IRAUTOX_PORT", "6768"))
 SOCKET_TIMEOUT = float(os.environ.get("IRAUTOX_SOCKET_TIMEOUT", "6"))
@@ -99,12 +100,7 @@ def _create_session(username, password, user):
     _cleanup_sessions()
     token = secrets.token_urlsafe(32)
     with _session_lock:
-        _sessions[token] = {
-            "username": username,
-            "password": password,
-            "user": user,
-            "updated": time.time(),
-        }
+        _sessions[token] = {"username": username, "password": password, "user": user, "updated": time.time()}
     session.clear()
     session["sid"] = token
 
@@ -143,6 +139,11 @@ def security_headers(response):
 @app.get("/")
 def index():
     return send_from_directory(ROOT, "index.html")
+
+
+@app.get("/resources/<path:filename>")
+def shared_resource(filename):
+    return send_from_directory(RESOURCES_ROOT, filename)
 
 
 @app.get("/<path:filename>")
