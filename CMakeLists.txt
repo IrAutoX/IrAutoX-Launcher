@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(IrAutoXLauncher
-    VERSION 2.0.2
+    VERSION 2.0.3
     DESCRIPTION "IrAutoX game launcher"
     LANGUAGES CXX
 )
@@ -72,7 +72,7 @@ endif()
 
 qt_add_executable(IrAutoXLauncher WIN32 ${IRAUTOX_SOURCES})
 qt_add_executable(IrAutoXUpdater WIN32
-    src/updater/main_v202.cpp
+    src/updater/main_v203.cpp
     ${IRAUTOX_UI_COMMON}
     resources/resources.qrc
 )
