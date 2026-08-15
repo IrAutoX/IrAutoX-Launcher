@@ -39,6 +39,8 @@ class QJsonValue;
 namespace irautox {
 
 class LoginDialog;
+class PresenceMonitor;
+class SdkBridge;
 
 class MainWindow final : public QMainWindow {
     Q_OBJECT
@@ -109,6 +111,10 @@ private:
     bool hasValidInstallMarker(const InstalledGame &game) const;
     bool gameSessionActive() const;
     void applyGameIcon(QLabel *label, const QJsonObject &game, const QSize &size, bool circular = false);
+    void publishPresence(qint64 gameId, bool playing, qint64 elapsedSeconds, const QString &details, const QString &state, int partySize, int partyMax, const QString &source);
+    void precacheGameAssets(const QJsonObject &game);
+    void applyGameAsset(QLabel *label, const QJsonObject &game, const QSize &size, bool banner, bool circular);
+    void applyGameBanner(QLabel *label, const QJsonObject &game, const QSize &size);
 
     static qint64 jsonId(const QJsonValue &value);
     static QString safeFolderName(const QString &name, qint64 id);
@@ -146,6 +152,8 @@ private:
     QSystemTrayIcon *m_tray = nullptr;
     QTimer *m_announcementTimer = nullptr;
     QNetworkAccessManager *m_assetNetwork = nullptr;
+    PresenceMonitor *m_presenceMonitor = nullptr;
+    SdkBridge *m_sdkBridge = nullptr;
 
     QGridLayout *m_storeGrid = nullptr;
     QVBoxLayout *m_libraryLayout = nullptr;

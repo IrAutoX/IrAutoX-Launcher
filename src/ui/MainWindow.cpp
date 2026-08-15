@@ -3,6 +3,9 @@
 #include "core/ArchiveUtil.h"
 #include "core/SecureStore.h"
 #include "core/ShortcutManager.h"
+#include "ui/StyledMessageBox.h"
+#include "core/SdkBridge.h"
+#include "core/PresenceMonitor.h"
 #include "ui/LoginDialog.h"
 
 #include <QAbstractButton>
@@ -169,7 +172,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     QString libraryError;
     if (!m_library.load(&libraryError) && !libraryError.isEmpty())
-        QMessageBox::warning(this, tr("کتابخانه"), libraryError);
+        StyledMessageBox::warning(this, tr("کتابخانه"), libraryError);
 
     connect(&m_client, &ProtocolClient::messageReceived, this, &MainWindow::onServerMessage);
     connect(&m_client, &ProtocolClient::connectionStateChanged, this, &MainWindow::onConnectionState);
@@ -177,6 +180,21 @@ MainWindow::MainWindow(QWidget *parent)
         m_connectionLabel->setToolTip(error);
     });
     connect(&m_library, &GameLibrary::changed, this, &MainWindow::renderLibrary);
+    m_presenceMonitor = new PresenceMonitor(&m_library, this);
+    connect(m_presenceMonitor, &PresenceMonitor::presenceChanged, this,
+            [this](qint64 gameId, bool playing, qint64 elapsed, const QString &source) {
+        publishPresence(gameId, playing, elapsed, QString(), QString(), 0, 0, source);
+    });
+    m_presenceMonitor->start();
+
+    m_sdkBridge = new SdkBridge(this);
+    if (!m_sdkBridge->listen())
+        m_tray->showMessage(tr("IrAutoX SDK"), tr("پورت محلی SDK در دسترس نیست."), QSystemTrayIcon::Warning, 3500);
+    connect(m_sdkBridge, &SdkBridge::presenceChanged, this,
+            [this](qint64 gameId, bool playing, qint64 elapsed, const QString &details, const QString &state,
+                   int partySize, int partyMax, const QString &source) {
+        publishPresence(gameId, playing, elapsed, details, state, partySize, partyMax, source);
+    });
     connect(&m_downloadManager, &DownloadManager::taskAdded, this, &MainWindow::onDownloadAdded);
     connect(&m_downloadManager, &DownloadManager::taskProgress, this, &MainWindow::onDownloadProgress);
     connect(&m_downloadManager, &DownloadManager::taskCompleted, this, &MainWindow::onDownloadCompleted);
@@ -241,23 +259,21 @@ bool MainWindow::gameSessionActive() const
     return false;
 }
 
-void MainWindow::applyGameIcon(QLabel *label, const QJsonObject &game, const QSize &size, bool circular)
+void MainWindow::applyGameAsset(QLabel *label, const QJsonObject &game, const QSize &size, bool banner, bool circular)
 {
-    if (!label)
-        return;
-
     QString value;
-    const QJsonValue iconValue = game.value(QStringLiteral("icon"));
-    if (iconValue.isString())
-        value = iconValue.toString().trimmed();
-    else if (iconValue.isObject())
-        value = iconValue.toObject().value(QStringLiteral("url")).toString().trimmed();
-    if (value.isEmpty())
-        value = game.value(QStringLiteral("icon_url")).toString().trimmed();
-    if (value.isEmpty())
-        value = game.value(QStringLiteral("logo")).toString().trimmed();
-    if (value.isEmpty())
-        value = game.value(QStringLiteral("icon_base64")).toString().trimmed();
+    const QStringList keys = banner
+        ? QStringList{QStringLiteral("banner"), QStringLiteral("banner_url"), QStringLiteral("hero"), QStringLiteral("cover"), QStringLiteral("banner_base64")}
+        : QStringList{QStringLiteral("icon"), QStringLiteral("icon_url"), QStringLiteral("logo"), QStringLiteral("icon_base64")};
+    for (const QString &key : keys) {
+        const QJsonValue candidate = game.value(key);
+        if (candidate.isString())
+            value = candidate.toString().trimmed();
+        else if (candidate.isObject())
+            value = candidate.toObject().value(QStringLiteral("url")).toString().trimmed();
+        if (!value.isEmpty())
+            break;
+    }
 
     if (value.startsWith(QStringLiteral("//")))
         value.prepend(QStringLiteral("https:"));
@@ -269,42 +285,49 @@ void MainWindow::applyGameIcon(QLabel *label, const QJsonObject &game, const QSi
         value.prepend(QStringLiteral("https://irautox.ir/"));
 
     const qint64 gameId = jsonId(game.value(QStringLiteral("id")));
-    const QByteArray keyData = value.toUtf8();
-    const QString fallbackKey = QString::fromLatin1(QCryptographicHash::hash(keyData, QCryptographicHash::Sha256).toHex().left(24));
-    const QString cacheKey = gameId > 0 ? QString::number(gameId) : fallbackKey;
+    const QString assetName = banner ? QStringLiteral("banner.img") : QStringLiteral("icon.img");
+    const QString fallbackKey = QString::fromLatin1(QCryptographicHash::hash(value.toUtf8(), QCryptographicHash::Sha256).toHex().left(24));
+    const QString gameKey = gameId > 0 ? QString::number(gameId) : fallbackKey;
     const QString cacheDir = QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
-                                 .filePath(QStringLiteral("cache/game-icons"));
+                                 .filePath(QStringLiteral("cache/games/%1").arg(gameKey));
     QDir().mkpath(cacheDir);
-    const QString cachePath = QDir(cacheDir).filePath(cacheKey + QStringLiteral(".img"));
+    const QString cachePath = QDir(cacheDir).filePath(assetName);
 
     QPointer<QLabel> safeLabel(label);
-    auto display = [safeLabel, size, circular](const QPixmap &source) {
+    auto display = [safeLabel, size, banner, circular](const QPixmap &source) {
         if (!safeLabel || source.isNull())
             return;
-        safeLabel->setPixmap(circular ? circularPixmap(source, size)
-                                      : source.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        if (circular)
+            safeLabel->setPixmap(circularPixmap(source, size));
+        else
+            safeLabel->setPixmap(source.scaled(size, banner ? Qt::KeepAspectRatioByExpanding : Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        safeLabel->setText(QString());
     };
 
     QPixmap cached;
     const bool hasCached = cached.load(cachePath);
     if (hasCached)
         display(cached);
+    const QFileInfo cacheInfo(cachePath);
+    const bool fresh = hasCached && cacheInfo.lastModified().secsTo(QDateTime::currentDateTime()) < 21600;
+    if (fresh)
+        return;
 
     const bool remote = value.startsWith(QStringLiteral("http://"), Qt::CaseInsensitive) ||
                         value.startsWith(QStringLiteral("https://"), Qt::CaseInsensitive);
     if (remote) {
-        if (!hasCached)
+        if (label && !hasCached)
             label->setPixmap(QIcon(QStringLiteral(":/logo.svg")).pixmap(size));
         QNetworkRequest request{QUrl(value)};
         request.setTransferTimeout(10000);
         request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
         request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("IrAutoX-Launcher/%1").arg(QString::fromLatin1(IRAUTOX_VERSION)));
         QNetworkReply *reply = m_assetNetwork->get(request);
-        connect(reply, &QNetworkReply::finished, this, [reply, safeLabel, size, circular, cachePath] {
+        connect(reply, &QNetworkReply::finished, this, [reply, safeLabel, size, banner, circular, cachePath] {
             const QByteArray bytes = reply->readAll();
             const bool ok = reply->error() == QNetworkReply::NoError;
             reply->deleteLater();
-            if (!ok || !safeLabel || bytes.isEmpty())
+            if (!ok || bytes.isEmpty())
                 return;
             QPixmap pix;
             if (!pix.loadFromData(bytes))
@@ -314,8 +337,13 @@ void MainWindow::applyGameIcon(QLabel *label, const QJsonObject &game, const QSi
                 cache.write(bytes);
                 cache.commit();
             }
-            safeLabel->setPixmap(circular ? circularPixmap(pix, size)
-                                          : pix.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+            if (!safeLabel)
+                return;
+            if (circular)
+                safeLabel->setPixmap(circularPixmap(pix, size));
+            else
+                safeLabel->setPixmap(pix.scaled(size, banner ? Qt::KeepAspectRatioByExpanding : Qt::KeepAspectRatio, Qt::SmoothTransformation));
+            safeLabel->setText(QString());
         });
         return;
     }
@@ -340,9 +368,48 @@ void MainWindow::applyGameIcon(QLabel *label, const QJsonObject &game, const QSi
         }
     }
 
-    if (!hasCached)
+    if (label && !hasCached) {
         label->setPixmap(QIcon(QStringLiteral(":/logo.svg")).pixmap(size));
+        if (banner)
+            label->setText(tr("IrAutoX"));
+    }
 }
+
+void MainWindow::applyGameIcon(QLabel *label, const QJsonObject &game, const QSize &size, bool circular)
+{
+    applyGameAsset(label, game, size, false, circular);
+}
+
+void MainWindow::applyGameBanner(QLabel *label, const QJsonObject &game, const QSize &size)
+{
+    applyGameAsset(label, game, size, true, false);
+}
+
+void MainWindow::precacheGameAssets(const QJsonObject &game)
+{
+    applyGameAsset(nullptr, game, QSize(1, 1), false, false);
+    applyGameAsset(nullptr, game, QSize(1, 1), true, false);
+}
+
+void MainWindow::publishPresence(qint64 gameId, bool playing, qint64 elapsedSeconds, const QString &details,
+                                 const QString &state, int partySize, int partyMax, const QString &source)
+{
+    if (gameId <= 0 || m_user.isEmpty() || !m_client.isConnected())
+        return;
+    QJsonObject data{
+        {QStringLiteral("user_id"), jsonId(m_user.value(QStringLiteral("id")))},
+        {QStringLiteral("game_id"), gameId},
+        {QStringLiteral("playing"), playing ? 1 : 0},
+        {QStringLiteral("playtime"), qMax<qint64>(0, elapsedSeconds)},
+        {QStringLiteral("source"), source}
+    };
+    if (!details.isEmpty()) data.insert(QStringLiteral("details"), details);
+    if (!state.isEmpty()) data.insert(QStringLiteral("state"), state);
+    if (partySize > 0) data.insert(QStringLiteral("party_size"), partySize);
+    if (partyMax > 0) data.insert(QStringLiteral("party_max"), partyMax);
+    m_client.sendCommand(QStringLiteral("set_status"), data);
+}
+
 
 QFrame *MainWindow::createWindowBar(QWidget *parent)
 {
@@ -511,6 +578,15 @@ QPushButton *MainWindow::addNavigationButton(const QString &text, Page page)
     button->setObjectName(QStringLiteral("nav"));
     button->setCheckable(true);
     button->setProperty("page", static_cast<int>(page));
+    QString iconPath = QStringLiteral(":/icons/store.svg");
+    if (page == LibraryPage) iconPath = QStringLiteral(":/icons/library.svg");
+    else if (page == DownloadsPage) iconPath = QStringLiteral(":/icons/download.svg");
+    else if (page == FriendsPage) iconPath = QStringLiteral(":/icons/friends.svg");
+    else if (page == ProfilePage) iconPath = QStringLiteral(":/icons/profile.svg");
+    else if (page == SettingsPage) iconPath = QStringLiteral(":/icons/settings.svg");
+    else if (page == AdminPage) iconPath = QStringLiteral(":/icons/admin.svg");
+    button->setIcon(QIcon(iconPath));
+    button->setIconSize(QSize(18, 18));
     m_navigation->addButton(button, static_cast<int>(page));
     connect(button, &QPushButton::clicked, this, [this, page] {
         setCurrentPage(page);
@@ -538,7 +614,7 @@ QWidget *MainWindow::createStorePage()
     headline->setObjectName(QStringLiteral("heroTitle"));
     auto *copy = new QLabel(tr("بازی‌ها را پیدا کن، سریع نصب کن و همیشه به‌روز بمان."), hero);
     copy->setObjectName(QStringLiteral("muted"));
-    auto *refresh = new QPushButton(tr("تازه‌سازی فروشگاه"), hero);
+    auto *refresh = new QPushButton(QIcon(QStringLiteral(":/icons/refresh.svg")), tr("تازه‌سازی فروشگاه"), hero);
     refresh->setObjectName(QStringLiteral("primary"));
     refresh->setMaximumWidth(180);
     connect(refresh, &QPushButton::clicked, this, [this] { m_client.sendCommand(QStringLiteral("get_games")); });
@@ -835,7 +911,7 @@ QWidget *MainWindow::createDetailPage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(28, 20, 28, 18);
     layout->setSpacing(14);
-    auto *back = new QPushButton(tr("بازگشت به فروشگاه"), page);
+    auto *back = new QPushButton(QIcon(QStringLiteral(":/icons/back.svg")), tr("بازگشت به فروشگاه"), page);
     back->setMaximumWidth(180);
     connect(back, &QPushButton::clicked, this, [this] { setCurrentPage(StorePage); });
     layout->addWidget(back, 0, Qt::AlignRight);
@@ -904,6 +980,7 @@ void MainWindow::setupTray()
 {
     m_tray = new QSystemTrayIcon(QIcon(QStringLiteral(":/logo.svg")), this);
     auto *menu = new QMenu(this);
+    menu->setFont(qApp->font());
     auto *showAction = menu->addAction(tr("نمایش لانچر"));
     auto *downloadsAction = menu->addAction(tr("دانلودها"));
     menu->addSeparator();
@@ -982,7 +1059,7 @@ void MainWindow::onServerMessage(const QJsonObject &message)
             m_loginDialog->activateWindow();
             hide();
         }
-        QMessageBox::warning(m_loginDialog && m_loginDialog->isVisible() ? static_cast<QWidget *>(m_loginDialog) : this,
+        StyledMessageBox::warning(m_loginDialog && m_loginDialog->isVisible() ? static_cast<QWidget *>(m_loginDialog) : this,
                              tr("IrAutoX"), error);
         return;
     }
@@ -1008,8 +1085,14 @@ void MainWindow::onServerMessage(const QJsonObject &message)
         const QPixmap avatarPixmap = decodedPixmap(avatar, QSize(104, 104), true);
         if (!avatarPixmap.isNull())
             m_profileAvatar->setPixmap(circularPixmap(avatarPixmap, QSize(104, 104)));
-        show();
-        raise();
+        if (m_sdkBridge)
+            m_sdkBridge->setIdentity(jsonId(m_user.value(QStringLiteral("id"))), m_user.value(QStringLiteral("username")).toString(m_sessionUsername));
+        if (!qApp->property("irautox.startHidden").toBool()) {
+            show();
+            raise();
+        } else {
+            hide();
+        }
         requestInitialData();
         if (m_startupGameId > 0) {
             const qint64 id = m_startupGameId;
@@ -1024,10 +1107,13 @@ void MainWindow::onServerMessage(const QJsonObject &message)
         for (const QJsonValue &value : message.value(QStringLiteral("games")).toArray()) {
             const QJsonObject game = value.toObject();
             const qint64 id = jsonId(game.value(QStringLiteral("id")));
-            if (id > 0)
+            if (id > 0) {
                 m_games.insert(id, game);
+                precacheGameAssets(game);
+            }
         }
         renderStore();
+        renderLibrary();
         if (!m_startupGameName.isEmpty()) { const QString pending = m_startupGameName; m_startupGameName.clear(); QTimer::singleShot(0, this, [this, pending] { handleProtocolUrl(QStringLiteral("irautox://") + pending.section(QLatin1Char('|'), 0, 0) + QLatin1Char('/') + pending.section(QLatin1Char('|'), 1)); }); }
         return;
     }
@@ -1077,7 +1163,7 @@ void MainWindow::onServerMessage(const QJsonObject &message)
         if (installed->version.trimmed() != serverVersion.trimmed()) {
             const QString prompt = tr("نسخهٔ جدید %1 آماده است.\nنسخهٔ فعلی: %2\nنسخهٔ جدید: %3\nاکنون بروزرسانی شود؟")
                 .arg(installed->name, installed->version, serverVersion);
-            if (QMessageBox::question(this, tr("بروزرسانی بازی"), prompt) == QMessageBox::Yes) {
+            if (StyledMessageBox::question(this, tr("بروزرسانی بازی"), prompt) == QMessageBox::Yes) {
                 m_currentGameId = gameId;
                 m_currentGame = {
                     {QStringLiteral("id"), gameId},
@@ -1237,9 +1323,9 @@ void MainWindow::renderLibrary()
             meta->setObjectName(QStringLiteral("muted"));
             info->addWidget(name);
             info->addWidget(meta);
-            auto *play = new QPushButton(tr("اجرا"), row);
+            auto *play = new QPushButton(QIcon(QStringLiteral(":/icons/play.svg")), tr("اجرا"), row);
             play->setObjectName(QStringLiteral("primary"));
-            auto *more = new QPushButton(tr("گزینه‌ها"), row);
+            auto *more = new QPushButton(QIcon(QStringLiteral(":/icons/more.svg")), tr("گزینه‌ها"), row);
             const qint64 id = game.id;
             connect(play, &QPushButton::clicked, this, [this, id] { checkAndLaunch(id); });
             connect(more, &QPushButton::clicked, this, [this, id, more] {
@@ -1377,31 +1463,25 @@ void MainWindow::updateDetail(const QJsonObject &game, const QJsonArray &reviews
     m_detailVersion->setText(tr("نسخه %1").arg(game.value(QStringLiteral("version")).toString(QStringLiteral("1.0"))));
     m_detailDescription->setText(game.value(QStringLiteral("desc")).toString(tr("توضیحی برای این بازی ثبت نشده است.")));
     applyGameIcon(m_detailIcon, game, QSize(86, 86));
-    QPixmap banner = decodedPixmap(game.value(QStringLiteral("banner")).toString(), QSize(1000, 230), true);
-    if (banner.isNull()) {
-        m_detailBanner->setPixmap(QPixmap{});
-        m_detailBanner->setText(tr("IrAutoX  •  %1").arg(m_detailName->text()));
-    } else {
-        m_detailBanner->setText(QString{});
-        m_detailBanner->setPixmap(banner);
-    }
+    m_detailBanner->setText(tr("IrAutoX  •  %1").arg(m_detailName->text()));
+    applyGameBanner(m_detailBanner, game, QSize(1000, 230));
     m_detailAction->setText(m_library.find(m_currentGameId) ? tr("بررسی و اجرا") : tr("نصب بازی"));
     renderReviews(reviews);
 }
 
 void MainWindow::installCurrentGame(bool update)
 {
-    if (gameSessionActive()) { QMessageBox::information(this, tr("در حال بازی"), tr("تا وقتی یک بازی در حال اجراست، نصب یا بروزرسانی بازی دیگری غیرفعال است.")); return; }
+    if (gameSessionActive()) { StyledMessageBox::information(this, tr("در حال بازی"), tr("تا وقتی یک بازی در حال اجراست، نصب یا بروزرسانی بازی دیگری غیرفعال است.")); return; }
     if (m_currentGameId <= 0)
         return;
     const QString urlText = m_currentGame.value(QStringLiteral("url")).toString(m_currentGame.value(QStringLiteral("download_url")).toString());
     const QString executable = m_currentGame.value(QStringLiteral("launch")).toString(m_currentGame.value(QStringLiteral("launch_exe")).toString());
     if (!QUrl(urlText).isValid() || urlText.isEmpty() || executable.isEmpty()) {
-        QMessageBox::warning(this, tr("نصب بازی"), tr("لینک دانلود یا فایل اجرای بازی در سرور کامل نیست."));
+        StyledMessageBox::warning(this, tr("نصب بازی"), tr("لینک دانلود یا فایل اجرای بازی در سرور کامل نیست."));
         return;
     }
     if (!ArchiveUtil::isSafeEntry(executable)) {
-        QMessageBox::warning(this, tr("نصب بازی"), tr("مسیر فایل اجرایی اعلام‌شده ناامن است."));
+        StyledMessageBox::warning(this, tr("نصب بازی"), tr("مسیر فایل اجرایی اعلام‌شده ناامن است."));
         return;
     }
 
@@ -1498,13 +1578,13 @@ void MainWindow::onDownloadCompleted(const DownloadRequest &request)
 void MainWindow::onDownloadFailed(qint64 gameId, const QString &error)
 {
     Q_UNUSED(gameId)
-    QMessageBox::critical(this, tr("دانلود / نصب ناموفق"), error);
+    StyledMessageBox::critical(this, tr("دانلود / نصب ناموفق"), error);
     m_globalDownloadLabel->setText(tr("عملیات ناموفق بود"));
 }
 
 void MainWindow::checkAndLaunch(qint64 gameId)
 {
-    if (gameSessionActive()) { QMessageBox::information(this, tr("در حال بازی"), tr("یک بازی هم‌اکنون در حال اجراست. ابتدا آن را ببندید.")); return; }
+    if (gameSessionActive()) { StyledMessageBox::information(this, tr("در حال بازی"), tr("یک بازی هم‌اکنون در حال اجراست. ابتدا آن را ببندید.")); return; }
     if (!m_library.find(gameId)) {
         showGameDetails(gameId);
         return;
@@ -1535,13 +1615,13 @@ void MainWindow::launchGame(qint64 gameId)
     }
 
     if (!ArchiveUtil::isSafeEntry(game->executable)) {
-        QMessageBox::warning(this, tr("اجرای بازی"), tr("مسیر فایل اجرایی ناامن است."));
+        StyledMessageBox::warning(this, tr("اجرای بازی"), tr("مسیر فایل اجرایی ناامن است."));
         return;
     }
     const QString executable = QDir(game->rootPath).absoluteFilePath(game->executable);
     const QString rootPrefix = QDir(game->rootPath).absolutePath() + QDir::separator();
     if (!QFileInfo::exists(executable) || !QDir::cleanPath(executable).startsWith(QDir::cleanPath(rootPrefix), Qt::CaseInsensitive)) {
-        QMessageBox::warning(this, tr("اجرای بازی"), tr("فایل اجرایی پیدا نشد:\n%1").arg(executable));
+        StyledMessageBox::warning(this, tr("اجرای بازی"), tr("فایل اجرایی پیدا نشد:\n%1").arg(executable));
         return;
     }
     if (!game->executableSha256.isEmpty()) {
@@ -1550,7 +1630,7 @@ void MainWindow::launchGame(qint64 gameId)
             QCryptographicHash hash(QCryptographicHash::Sha256);
             hash.addData(&file);
             if (QString::fromLatin1(hash.result().toHex()).compare(game->executableSha256, Qt::CaseInsensitive) != 0) {
-                QMessageBox::warning(this, tr("بررسی فایل"), tr("فایل اجرایی بازی تغییر کرده است؛ بازی را دوباره نصب کنید."));
+                StyledMessageBox::warning(this, tr("بررسی فایل"), tr("فایل اجرایی بازی تغییر کرده است؛ بازی را دوباره نصب کنید."));
                 return;
             }
         }
@@ -1606,7 +1686,7 @@ void MainWindow::launchGame(qint64 gameId)
         if (error == QProcess::FailedToStart) {
             sendPresence(false, 0);
             m_activeGameProcesses.remove(gameId);
-            QMessageBox::warning(this, tr("اجرای بازی"), process->errorString());
+            StyledMessageBox::warning(this, tr("اجرای بازی"), process->errorString());
             process->deleteLater();
         }
     });
@@ -1641,17 +1721,17 @@ void MainWindow::uninstallGame(qint64 gameId)
     if (!gamePointer)
         return;
     const InstalledGame game = *gamePointer;
-    if (QMessageBox::question(this, tr("حذف بازی"), tr("%1 و فایل‌های نصب‌شده حذف شوند؟").arg(game.name)) != QMessageBox::Yes)
+    if (StyledMessageBox::question(this, tr("حذف بازی"), tr("%1 و فایل‌های نصب‌شده حذف شوند؟").arg(game.name)) != QMessageBox::Yes)
         return;
     if (!hasValidInstallMarker(game)) {
-        QMessageBox::information(this, tr("ایمنی حذف"),
+        StyledMessageBox::information(this, tr("ایمنی حذف"),
             tr("این نصب نشانگر معتبر IrAutoX ندارد؛ فقط از کتابخانه حذف می‌شود و پوشه دست‌نخورده می‌ماند."));
         m_library.forget(gameId);
         return;
     }
     const QString absolute = QFileInfo(game.rootPath).absoluteFilePath();
     if (absolute.isEmpty() || QDir(absolute).isRoot() || !QDir(absolute).removeRecursively()) {
-        QMessageBox::warning(this, tr("حذف بازی"), tr("حذف پوشه ناموفق بود. بازی را ببندید و دوباره امتحان کنید."));
+        StyledMessageBox::warning(this, tr("حذف بازی"), tr("حذف پوشه ناموفق بود. بازی را ببندید و دوباره امتحان کنید."));
         return;
     }
     QFile::remove(ShortcutManager::shortcutPath(gameId, game.name));
@@ -1669,7 +1749,7 @@ void MainWindow::saveSettings()
     applyStartupSetting(m_startWithWindows->isChecked());
     QDir().mkpath(m_settings.downloadRoot());
     m_client.connectToServer(m_settings.serverHost(), m_settings.serverPort());
-    QMessageBox::information(this, tr("تنظیمات"), tr("تنظیمات ذخیره شد."));
+    StyledMessageBox::information(this, tr("تنظیمات"), tr("تنظیمات ذخیره شد."));
 }
 
 void MainWindow::applyStartupSetting(bool enabled)
@@ -1705,7 +1785,7 @@ void MainWindow::uploadAvatar()
         return;
     QFileInfo info(path);
     if (info.size() > 2 * 1024 * 1024) {
-        QMessageBox::warning(this, tr("تصویر پروفایل"), tr("حجم تصویر باید کمتر از ۲ مگابایت باشد."));
+        StyledMessageBox::warning(this, tr("تصویر پروفایل"), tr("حجم تصویر باید کمتر از ۲ مگابایت باشد."));
         return;
     }
     const QString data = fileToBase64(path);
@@ -1754,12 +1834,12 @@ void MainWindow::publishAdminGame()
     const QString url = m_adminUrl->text().trimmed();
     const QString executable = m_adminExecutable->text().trimmed();
     if (name.isEmpty() || version.isEmpty() || !QUrl(url).isValid() || !ArchiveUtil::isSafeEntry(executable)) {
-        QMessageBox::warning(this, tr("انتشار بازی"), tr("نام، نسخه، لینک مستقیم و مسیر اجرای معتبر لازم است."));
+        StyledMessageBox::warning(this, tr("انتشار بازی"), tr("نام، نسخه، لینک مستقیم و مسیر اجرای معتبر لازم است."));
         return;
     }
     const QString sha = m_adminSha256->text().trimmed();
     if (!sha.isEmpty() && !QRegularExpression(QStringLiteral("^[0-9A-Fa-f]{64}$")).match(sha).hasMatch()) {
-        QMessageBox::warning(this, tr("انتشار بازی"), tr("SHA-256 باید دقیقاً ۶۴ نویسهٔ هگزادسیمال باشد."));
+        StyledMessageBox::warning(this, tr("انتشار بازی"), tr("SHA-256 باید دقیقاً ۶۴ نویسهٔ هگزادسیمال باشد."));
         return;
     }
     QJsonObject data{
