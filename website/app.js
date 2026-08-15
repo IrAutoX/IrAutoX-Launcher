@@ -43,7 +43,7 @@ function renderGames(items) {
 async function loadGames() {
   storeMessage.textContent = 'در حال دریافت فروشگاه…';
   try {
-    const response = await fetch(`${API_BASE}/games`, {headers:{Accept:'application/json'}});
+    const response = await fetch(`${API_BASE}/games`, {credentials:'include',headers:{Accept:'application/json'}});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     renderGames(Array.isArray(data) ? data : data.games || []);
@@ -53,7 +53,7 @@ async function loadGames() {
       const response = await fetch('games.json');
       const data = await response.json();
       renderGames(Array.isArray(data) ? data : data.games || []);
-      storeMessage.textContent = 'API فروشگاه در دسترس نبود؛ داده محلی نمایش داده شد.';
+      storeMessage.textContent = 'برای فروشگاه آنلاین وارد حساب شوید یا اتصال API را بررسی کنید.';
     } catch {
       renderGames([]);
       storeMessage.textContent = `اتصال فروشگاه برقرار نشد: ${error.message}`;
@@ -89,6 +89,8 @@ document.getElementById('loginForm').addEventListener('submit', async event => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
     target.textContent = `خوش آمدی ${data.username || username}`;
+    document.getElementById('password').value = '';
+    await loadGames();
   } catch (error) {
     target.textContent = `ورود انجام نشد: ${error.message}`;
   }
