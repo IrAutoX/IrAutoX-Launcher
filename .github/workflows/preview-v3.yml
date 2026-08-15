@@ -24,6 +24,7 @@ jobs:
           python tools/apply_launcher_preview_fixes.py
           python tools/finalize_preview_v3.py
           python tools/apply_v202.py
+          python tools/apply_v202_post.py
 
       - name: Commit generated launcher sources
         shell: pwsh
