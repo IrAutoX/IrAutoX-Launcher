@@ -7,6 +7,8 @@
 #include <QFileInfo>
 #include <QHash>
 
+#include <iterator>
+
 #ifdef Q_OS_WIN
 #  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>
@@ -75,9 +77,10 @@ void PresenceMonitor::stop()
     if (m_activeGameId > 0) {
         const qint64 elapsed = qMax<qint64>(0, QDateTime::currentSecsSinceEpoch() - m_startedAt);
         emit presenceChanged(m_activeGameId, false, elapsed, QStringLiteral("process"));
-        m_activeGameId = 0;
-        m_startedAt = 0;
     }
+    m_activeGameId = 0;
+    m_startedAt = 0;
+    m_lastHeartbeatAt = 0;
 }
 
 void PresenceMonitor::scan()
@@ -97,13 +100,19 @@ void PresenceMonitor::scan()
         }
     }
 #endif
-    if (detected == m_activeGameId)
-        return;
     const qint64 now = QDateTime::currentSecsSinceEpoch();
+    if (detected == m_activeGameId) {
+        if (m_activeGameId > 0 && now - m_lastHeartbeatAt >= 20) {
+            emit presenceChanged(m_activeGameId, true, qMax<qint64>(0, now - m_startedAt), QStringLiteral("process"));
+            m_lastHeartbeatAt = now;
+        }
+        return;
+    }
     if (m_activeGameId > 0)
         emit presenceChanged(m_activeGameId, false, qMax<qint64>(0, now - m_startedAt), QStringLiteral("process"));
     m_activeGameId = detected;
     m_startedAt = detected > 0 ? now : 0;
+    m_lastHeartbeatAt = detected > 0 ? now : 0;
     if (m_activeGameId > 0)
         emit presenceChanged(m_activeGameId, true, 0, QStringLiteral("process"));
 }
