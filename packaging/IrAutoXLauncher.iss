@@ -5,7 +5,7 @@
   #define OutputDir "..\\release"
 #endif
 #ifndef Version
-  #define Version "2.0.1"
+  #define Version "2.0.2"
 #endif
 
 [Setup]
@@ -37,7 +37,7 @@ RestartApplications=no
 SetupLogging=yes
 VersionInfoVersion={#Version}.0
 VersionInfoCompany=IrAutoX
-VersionInfoDescription=IrAutoX Launcher - Game Library, Downloader, Updater and Protocol Handler
+VersionInfoDescription=IrAutoX Launcher - Game Library, Downloader, Updater, Presence, SDK Bridge and Protocol Handler
 VersionInfoProductName=IrAutoX Launcher
 VersionInfoProductVersion={#Version}
 SetupIconFile=..\resources\app.ico
